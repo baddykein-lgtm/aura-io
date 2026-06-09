@@ -15,7 +15,6 @@ export async function sendWhatsApp(phone: string, text: string) {
         'Content-Type': 'application/json'
       }
     })
-    console.log(`Enviado a ${phone}`)
   } catch (err: any) {
     console.error('Error WA:', err?.response?.data)
   }
