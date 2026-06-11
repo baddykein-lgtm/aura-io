@@ -13,14 +13,18 @@ export function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const body = await req.json()
-  const msg = body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]
-  if (!msg) return NextResponse.json({ ok: true })
-  const phone = msg.from
-  const text = msg.text?.body
-  if (!text) return NextResponse.json({ ok: true })
+  const text = await req.text()
+  const params = new URLSearchParams(text)
+  
+  const phone = params.get('From')?.replace('whatsapp:', '') ?? ''
+  const body = params.get('Body') ?? ''
+
+  if (!phone || !body) return NextResponse.json({ ok: true })
+
   const { data: user } = await supabase
     .from('users').select().eq('phone', phone).single()
-  if (user) await respondAura(user, text)
+
+  if (user) await respondAura(user, body)
+
   return NextResponse.json({ ok: true })
 }
