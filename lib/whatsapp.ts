@@ -1,21 +1,19 @@
-import axios from 'axios'
+import twilio from 'twilio'
 
-const WA_URL = `https://graph.facebook.com/v20.0/${process.env.WA_PHONE_NUMBER_ID}/messages`
+const client = twilio(
+  process.env.TWILIO_ACCOUNT_SID,
+  process.env.TWILIO_AUTH_TOKEN
+)
 
 export async function sendWhatsApp(phone: string, text: string) {
   try {
-    await axios.post(WA_URL, {
-      messaging_product: 'whatsapp',
-      to: phone,
-      type: 'text',
-      text: { body: text }
-    }, {
-      headers: {
-        Authorization: `Bearer ${process.env.WA_ACCESS_TOKEN}`,
-        'Content-Type': 'application/json'
-      }
+    await client.messages.create({
+      from: process.env.TWILIO_WHATSAPP_NUMBER,
+      to: `whatsapp:${phone}`,
+      body: text
     })
+    console.log(`Enviado a ${phone}`)
   } catch (err: any) {
-    console.error('Error WA:', err?.response?.data)
+    console.error('Error Twilio:', err)
   }
 }
