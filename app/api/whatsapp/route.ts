@@ -1,5 +1,4 @@
-import { supabase } from '@/lib/supabase'
-import { respondAura } from '@/lib/aura'
+import { sendWhatsApp } from '@/lib/whatsapp'
 import { NextResponse } from 'next/server'
 
 export function GET(req: Request) {
@@ -15,16 +14,11 @@ export function GET(req: Request) {
 export async function POST(req: Request) {
   const text = await req.text()
   const params = new URLSearchParams(text)
-  
-  const phone = params.get('From')?.replace('whatsapp:', '') ?? ''
+  const fromRaw = params.get('From') ?? ''
+  const phone = fromRaw.replace('whatsapp:', '')
   const body = params.get('Body') ?? ''
 
-  if (!phone || !body) return NextResponse.json({ ok: true })
-
-  const { data: user } = await supabase
-    .from('users').select().eq('phone', phone).single()
-
-  if (user) await respondAura(user, body)
+  await sendWhatsApp(phone, `Recibí tu mensaje: "${body}" — Aura 💜`)
 
   return NextResponse.json({ ok: true })
 }
