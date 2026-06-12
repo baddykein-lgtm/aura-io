@@ -1,9 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
 
-export const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+const supabaseUrl = 'https://dtlfpagrcxehmhoatpva.supabase.co'
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNrZXZyY2ZscHpwbWNtbGF3dGVuIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MTEyNTk0NywiZXhwIjoyMDk2NzAxOTQ3fQ.Ooc04p1HQnq_-mkBkFJxIhjcS9Zurp0yNBYWDhUvkLU¨´
+
+export const supabase = createClient(supabaseUrl, supabaseKey)
 
 export async function saveMemory(userId: string, key: string, value: string) {
   await supabase.from('memories').upsert(
