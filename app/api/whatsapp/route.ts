@@ -17,18 +17,22 @@ export async function POST(req: Request) {
   const text = await req.text()
   const params = new URLSearchParams(text)
   const fromRaw = params.get('From') ?? ''
-  const phone = fromRaw.replace('whatsapp:', '')
+  const phone = fromRaw.replace('whatsapp:', '').trim()
   const body = params.get('Body') ?? ''
 
   if (!phone || !body) return NextResponse.json({ ok: true })
 
-  const { data: user } = await supabase
-    .from('users').select().eq('phone', phone).single()
+  const { data: users } = await supabase
+    .from('users')
+    .select()
+    .ilike('phone', phone)
+
+  const user = users?.[0] ?? null
 
   if (user) {
     await respondAura(user, body)
   } else {
-    await sendWhatsApp(phone, `No encontré usuario para: ${phone}`)
+    await sendWhatsApp(phone, `No encontré usuario para: "${phone}" longitud: ${phone.length}`)
   }
 
   return NextResponse.json({ ok: true })
