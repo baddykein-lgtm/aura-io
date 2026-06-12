@@ -22,17 +22,16 @@ export async function POST(req: Request) {
 
   if (!phone || !body) return NextResponse.json({ ok: true })
 
-  const { data: users } = await supabase
+  const { data: user } = await supabase
     .from('users')
     .select()
-    .ilike('phone', phone)
-
-  const user = users?.[0] ?? null
+    .eq('id', '8c510302-d4a0-45d2-a7af-57194d7814c5')
+    .single()
 
   if (user) {
     await respondAura(user, body)
   } else {
-    await sendWhatsApp(phone, `No encontré usuario para: "${phone}" longitud: ${phone.length}`)
+    await sendWhatsApp(phone, 'Error buscando usuario por ID')
   }
 
   return NextResponse.json({ ok: true })
