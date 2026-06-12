@@ -28,7 +28,7 @@ export async function POST(req: Request) {
   if (user) {
     await respondAura(user, body)
   } else {
-    await sendWhatsApp(phone, 'Hola! Soy Aura 💜 Para acceder regístrate en: aura-io-2rgt.vercel.app')
+    await sendWhatsApp(phone, `No encontré usuario para: ${phone}`)
   }
 
   return NextResponse.json({ ok: true })
