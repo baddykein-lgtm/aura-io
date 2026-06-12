@@ -1,3 +1,5 @@
+import { supabase } from '@/lib/supabase'
+import { respondAura } from '@/lib/aura'
 import { sendWhatsApp } from '@/lib/whatsapp'
 import { NextResponse } from 'next/server'
 
@@ -18,7 +20,16 @@ export async function POST(req: Request) {
   const phone = fromRaw.replace('whatsapp:', '')
   const body = params.get('Body') ?? ''
 
-  await sendWhatsApp(phone, `Recibí tu mensaje: "${body}" — Aura 💜`)
+  if (!phone || !body) return NextResponse.json({ ok: true })
+
+  const { data: user } = await supabase
+    .from('users').select().eq('phone', phone).single()
+
+  if (user) {
+    await respondAura(user, body)
+  } else {
+    await sendWhatsApp(phone, 'Hola! Soy Aura 💜 Para acceder regístrate en: aura-io-2rgt.vercel.app')
+  }
 
   return NextResponse.json({ ok: true })
 }
