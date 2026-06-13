@@ -22,16 +22,17 @@ export async function POST(req: Request) {
 
   if (!phone || !body) return NextResponse.json({ ok: true })
 
-  const { data: user } = await supabase
+  const { data: users } = await supabase
     .from('users')
     .select()
-    .eq('id', '8c510302-d4a0-45d2-a7af-57194d7814c5')
-    .single()
+    .ilike('phone', phone)
+
+  const user = users?.[0] ?? null
 
   if (user) {
     await respondAura(user, body)
   } else {
-    await sendWhatsApp(phone, 'Error buscando usuario por ID')
+    await sendWhatsApp(phone, 'Hola! Soy Aura 💜 Para acceder regístrate en: aura-io-2rgt.vercel.app')
   }
 
   return NextResponse.json({ ok: true })
