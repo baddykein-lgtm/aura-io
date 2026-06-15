@@ -6,7 +6,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
 function buildPrompt(memory: Record<string, string>) {
   const mem = Object.entries(memory)
-    .map(([k, v]) => `- ${k}: ${v}`).join('\n') || 'Sin datos aún'
+    .map(([k, v]) => `- ${k}: ${v}`).join('\n') || 'Aún no sé nada de este usuario'
 
   const now = new Date()
   const fechaHoy = now.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
@@ -16,25 +16,35 @@ function buildPrompt(memory: Record<string, string>) {
 
 FECHA Y HORA ACTUAL: ${fechaHoy}, ${horaActual}
 
-LO QUE SABES DEL USUARIO:
+MEMORIA PERMANENTE QUE TIENES DE ESTE USUARIO:
 ${mem}
 
-CAPACIDAD ESPECIAL - RECORDATORIOS:
-Si el usuario te pide que le recuerdes algo (usa palabras como "recuérdame", "avísame", "no dejes que olvide"), DEBES:
-1. Responder confirmando de forma natural y cálida
-2. Añadir SIEMPRE al final, en una línea nueva, exactamente este formato:
-[RECORDATORIO: <descripción corta> | <YYYY-MM-DD HH:MM>]
+CAPACIDAD 1 - MEMORIA PERMANENTE:
+Si el usuario comparte información personal relevante (su nombre, profesión, ciudad, gustos, horarios habituales, nombres de familiares/clientes, preferencias, fecha de cumpleaños, etc), DEBES guardarlo.
+Añade al final de tu respuesta, en líneas separadas, una línea por cada dato nuevo con este formato EXACTO:
+[MEMORIA: clave | valor]
 
-Ejemplo de petición: "recuérdame beber agua en 5 minutos" (asumiendo ahora son las ${horaActual} del ${fechaHoy})
-Ejemplo de respuesta correcta:
-Vale! Te recuerdo beber agua en 5 minutitos 💜
+Usa claves simples en minúsculas sin espacios: nombre, profesion, ciudad, cumpleanos, etc.
+Ejemplo: si dice "soy Carlos, fisio en Madrid":
+[MEMORIA: nombre | Carlos]
+[MEMORIA: profesion | fisioterapeuta]
+[MEMORIA: ciudad | Madrid]
+
+Si el usuario pregunta "qué sabes de mí" o similar, responde con la información de tu memoria permanente de forma natural y cálida.
+
+CAPACIDAD 2 - RECORDATORIOS:
+Si el usuario te pide que le recuerdes algo (usa palabras como "recuérdame", "avísame", "no dejes que olvide"), añade SIEMPRE al final, en una línea nueva, este formato:
+[RECORDATORIO:  | ]
+
+Ejemplo: "recuérdame beber agua en 5 minutos" (ahora son las ${horaActual} del ${fechaHoy}):
 [RECORDATORIO: Beber agua | ${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()+5).padStart(2,'0')}]
 
-Calcula siempre la fecha/hora exacta sumando a la hora actual indicada arriba. "en 5 minutos" = hora actual + 5 min. "mañana a las 9" = fecha de mañana a las 09:00.
+Calcula siempre la fecha/hora real sumando a la hora actual de arriba.
 
 OTRAS REGLAS:
-- Máximo 4 líneas de texto visible (sin contar la línea de RECORDATORIO)
-- Si NO te piden recordar nada, no incluyas la línea [RECORDATORIO...]`
+- Máximo 4 líneas de texto visible (sin contar las líneas técnicas [MEMORIA...] y [RECORDATORIO...])
+- Las líneas [MEMORIA...] y [RECORDATORIO...] son invisibles para el usuario, solo las usas tú internamente
+- Si no hay nada que recordar ni guardar, no incluyas esas líneas`
 }
 
 export async function respondAura(user: any, text: string) {
@@ -44,7 +54,7 @@ export async function respondAura(user: any, text: string) {
 
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o',
-    max_tokens: 300,
+    max_tokens: 400,
     messages: [
       { role: 'system', content: buildPrompt(memory) },
       ...history,
@@ -54,16 +64,25 @@ export async function respondAura(user: any, text: string) {
 
   let reply = completion.choices[0].message.content ?? 'Lo gestiono ahora!'
 
-  const match = reply.match(/\[RECORDATORIO:\s*(.+?)\s*\|\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\]/)
-  if (match) {
-    const [, recordatorioTexto, fechaHora] = match
+  // Detectar y guardar recordatorios
+  const reminderMatch = reply.match(/\[RECORDATORIO:\s*(.+?)\s*\|\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\]/)
+  if (reminderMatch) {
+    const [, recordatorioTexto, fechaHora] = reminderMatch
     await supabase.from('reminders').insert({
       user_id: user.id,
       text: recordatorioTexto.trim(),
       scheduled_at: new Date(fechaHora.replace(' ', 'T') + ':00').toISOString(),
       sent: false
     })
-    reply = reply.replace(match[0], '').trim()
+    reply = reply.replace(reminderMatch[0], '').trim()
+  }
+
+  // Detectar y guardar datos de memoria permanente (pueden ser varios)
+  const memoryMatches = [...reply.matchAll(/\[MEMORIA:\s*(.+?)\s*\|\s*(.+?)\]/g)]
+  for (const m of memoryMatches) {
+    const [, clave, valor] = m
+    await saveMemory(user.id, clave.trim().toLowerCase(), valor.trim())
+    reply = reply.replace(m[0], '').trim()
   }
 
   await saveMessage(user.id, 'user', text)
