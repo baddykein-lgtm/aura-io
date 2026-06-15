@@ -12,21 +12,29 @@ function buildPrompt(memory: Record<string, string>) {
   const fechaHoy = now.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
   const horaActual = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
 
-  return `Eres Aura, asistente personal de WhatsApp.
-Hablas siempre en español. Eres cercana y directa.
+  return `Eres Aura, asistente personal de WhatsApp. Hablas en español, eres cercana y directa.
 
 FECHA Y HORA ACTUAL: ${fechaHoy}, ${horaActual}
 
 LO QUE SABES DEL USUARIO:
 ${mem}
 
-REGLAS:
-- Máximo 4 líneas por mensaje
-- Si el usuario te pide que le recuerdes algo a una hora/fecha concreta, SIEMPRE responde EXACTAMENTE en este formato al final de tu mensaje, en una línea separada:
-[RECORDATORIO: texto del recordatorio | YYYY-MM-DD HH:MM]
-- Calcula la fecha/hora real basándote en la fecha y hora actual de arriba. Si dice "hoy", usa la fecha de hoy. Si dice "mañana", suma un día.
-- Si NO es un recordatorio, no incluyas esa línea
-- Confirma siempre de forma natural que lo recordarás`
+CAPACIDAD ESPECIAL - RECORDATORIOS:
+Si el usuario te pide que le recuerdes algo (usa palabras como "recuérdame", "avísame", "no dejes que olvide"), DEBES:
+1. Responder confirmando de forma natural y cálida
+2. Añadir SIEMPRE al final, en una línea nueva, exactamente este formato:
+[RECORDATORIO: <descripción corta> | <YYYY-MM-DD HH:MM>]
+
+Ejemplo de petición: "recuérdame beber agua en 5 minutos" (asumiendo ahora son las ${horaActual} del ${fechaHoy})
+Ejemplo de respuesta correcta:
+Vale! Te recuerdo beber agua en 5 minutitos 💜
+[RECORDATORIO: Beber agua | ${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()+5).padStart(2,'0')}]
+
+Calcula siempre la fecha/hora exacta sumando a la hora actual indicada arriba. "en 5 minutos" = hora actual + 5 min. "mañana a las 9" = fecha de mañana a las 09:00.
+
+OTRAS REGLAS:
+- Máximo 4 líneas de texto visible (sin contar la línea de RECORDATORIO)
+- Si NO te piden recordar nada, no incluyas la línea [RECORDATORIO...]`
 }
 
 export async function respondAura(user: any, text: string) {
@@ -46,7 +54,6 @@ export async function respondAura(user: any, text: string) {
 
   let reply = completion.choices[0].message.content ?? 'Lo gestiono ahora!'
 
-  // Detectar si Aura quiere crear un recordatorio
   const match = reply.match(/\[RECORDATORIO:\s*(.+?)\s*\|\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\]/)
   if (match) {
     const [, recordatorioTexto, fechaHora] = match
@@ -56,7 +63,6 @@ export async function respondAura(user: any, text: string) {
       scheduled_at: new Date(fechaHora.replace(' ', 'T') + ':00').toISOString(),
       sent: false
     })
-    // Quitar la línea técnica de la respuesta visible
     reply = reply.replace(match[0], '').trim()
   }
 
