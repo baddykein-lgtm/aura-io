@@ -1,6 +1,7 @@
 import OpenAI from 'openai'
 import { getMemory, getHistory, saveMessage, saveMemory, supabase } from './supabase'
 import { sendWhatsApp } from './whatsapp'
+import { createCalendarEvent } from './calendar'
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
@@ -20,7 +21,6 @@ function buildPrompt(memory: Record<string, string>) {
 
   const onboardingStep = memory['onboarding_step']
 
-  // Si está en onboarding, usar prompt específico
   if (onboardingStep && onboardingStep !== 'completado') {
     return `Eres Aura, asistente personal de WhatsApp. Hablas en español, eres cercana y cálida.
 Estás conociendo a un nuevo usuario. Sigue el onboarding paso a paso.
@@ -31,11 +31,11 @@ LO QUE YA SABES: ${mem}
 INSTRUCCIONES SEGÚN EL PASO:
 - Si paso es "nombre": El usuario acaba de decirte su nombre. Salúdale por su nombre, guarda [MEMORIA: nombre | <nombre>] y pregúntale a qué se dedica. Luego pon [ONBOARDING: profesion]
 - Si paso es "profesion": Guarda [MEMORIA: profesion | <profesion>] y pregúntale su horario habitual de trabajo. Luego pon [ONBOARDING: horario]
-- Si paso es "horario": Guarda [MEMORIA: horario | <horario>] y pregúntale qué es lo más importante que quiere gestionar (agenda, clientes, tareas, recordatorios). Luego pon [ONBOARDING: prioridades]
-- Si paso es "prioridades": Guarda [MEMORIA: prioridades | <prioridades>] y dile que ya está todo listo, que desde mañana a las 8:00 recibirá su resumen diario y que puede pedirle lo que necesite. Luego pon [ONBOARDING: completado]
+- Si paso es "horario": Guarda [MEMORIA: horario | <horario>] y pregúntale qué es lo más importante que quiere gestionar. Luego pon [ONBOARDING: prioridades]
+- Si paso es "prioridades": Guarda [MEMORIA: prioridades | <prioridades>] y dile que ya está todo listo, que desde mañana a las 8:00 recibirá su resumen diario. Luego pon [ONBOARDING: completado]
 
 REGLAS:
-- Máximo 3 líneas visibles por mensaje
+- Máximo 3 líneas visibles
 - Las líneas [MEMORIA...] y [ONBOARDING...] son invisibles para el usuario`
   }
 
@@ -58,8 +58,10 @@ Si el usuario pide un recordatorio, responde confirmando y añade OBLIGATORIAMEN
 [RECORDATORIO: descripción | YYYY-MM-DD HH:MM]
 La hora debe estar en hora de España.
 
-3. AGENDA
+3. AGENDA Y GOOGLE CALENDAR
+Si menciona una cita, reunión o evento con fecha/hora, añade:
 [AGENDA: título | YYYY-MM-DD HH:MM | notas]
+Esto lo crea automáticamente en su Google Calendar.
 
 4. TAREAS
 Añadir: [TAREA: descripción]
@@ -99,7 +101,7 @@ export async function respondAura(user: any, text: string) {
 
   let reply = completion.choices[0].message.content ?? 'Lo gestiono ahora!'
 
-  // ONBOARDING STEP
+  // ONBOARDING
   const onboardingMatch = reply.match(/\[ONBOARDING:\s*(.+?)\]/)
   if (onboardingMatch) {
     await saveMemory(user.id, 'onboarding_step', onboardingMatch[1].trim())
@@ -140,16 +142,18 @@ export async function respondAura(user: any, text: string) {
     }
   }
 
-  // AGENDA
+  // AGENDA + GOOGLE CALENDAR
   const agendaMatch = reply.match(/\[AGENDA:\s*(.+?)\s*\|\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\s*(?:\|\s*(.+?))?\]/)
   if (agendaMatch) {
     const [, titulo, fechaHora, notas] = agendaMatch
+    const utcTime = parseMadridToUTC(fechaHora)
     await supabase.from('agenda').insert({
       user_id: user.id,
       title: titulo.trim(),
-      starts_at: parseMadridToUTC(fechaHora),
+      starts_at: utcTime,
       notes: notas?.trim() ?? null
     })
+    await createCalendarEvent(user.id, titulo.trim(), utcTime, notas?.trim())
     reply = reply.replace(agendaMatch[0], '').trim()
   }
 
