@@ -4,7 +4,10 @@ import { NextResponse } from 'next/server'
 export async function GET(req: Request) {
   const url = new URL(req.url)
   const code = url.searchParams.get('code')
-  const phone = url.searchParams.get('state')
+  const phone = decodeURIComponent(url.searchParams.get('state') ?? '')
+
+  console.log('Calendar callback - phone:', phone)
+  console.log('Calendar callback - code:', code ? 'exists' : 'missing')
 
   if (!code) return new Response('Error: no code', { status: 400 })
 
@@ -23,16 +26,24 @@ export async function GET(req: Request) {
   })
 
   const tokens = await tokenRes.json()
+  console.log('Tokens recibidos:', tokens.access_token ? 'OK' : 'ERROR', tokens.error ?? '')
 
-  if (phone) {
-    const { data: user } = await supabase
-      .from('users').select().eq('phone', phone).single()
-    
+  if (tokens.access_token) {
+    // Buscar usuario por teléfono con ilike
+    const { data: users } = await supabase
+      .from('users')
+      .select()
+      .ilike('phone', `%${phone.replace('+', '')}%`)
+
+    console.log('Usuarios encontrados:', users?.length)
+
+    const user = users?.[0]
     if (user) {
       await supabase.from('users').update({
         google_access_token: tokens.access_token,
         google_refresh_token: tokens.refresh_token
       }).eq('id', user.id)
+      console.log('Token guardado para usuario:', user.id)
     }
   }
 
