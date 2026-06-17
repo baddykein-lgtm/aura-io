@@ -1,4 +1,7 @@
-export async function GET() {
+export async function GET(req: Request) {
+  const url_req = new URL(req.url)
+  const phone = url_req.searchParams.get('phone') ?? ''
+  
   const clientId = process.env.GOOGLE_CLIENT_ID
   const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL}/api/calendar/callback`
   
@@ -9,6 +12,7 @@ export async function GET() {
   url.searchParams.set('scope', 'https://www.googleapis.com/auth/calendar')
   url.searchParams.set('access_type', 'offline')
   url.searchParams.set('prompt', 'consent')
+  url.searchParams.set('state', phone)
 
   return Response.redirect(url.toString())
 }
