@@ -18,6 +18,27 @@ function buildPrompt(memory: Record<string, string>) {
   const hh = String(madridNow.getUTCHours()).padStart(2, '0')
   const min = String(madridNow.getUTCMinutes()).padStart(2, '0')
 
+  const onboardingStep = memory['onboarding_step']
+
+  // Si está en onboarding, usar prompt específico
+  if (onboardingStep && onboardingStep !== 'completado') {
+    return `Eres Aura, asistente personal de WhatsApp. Hablas en español, eres cercana y cálida.
+Estás conociendo a un nuevo usuario. Sigue el onboarding paso a paso.
+
+PASO ACTUAL: ${onboardingStep}
+LO QUE YA SABES: ${mem}
+
+INSTRUCCIONES SEGÚN EL PASO:
+- Si paso es "nombre": El usuario acaba de decirte su nombre. Salúdale por su nombre, guarda [MEMORIA: nombre | <nombre>] y pregúntale a qué se dedica. Luego pon [ONBOARDING: profesion]
+- Si paso es "profesion": Guarda [MEMORIA: profesion | <profesion>] y pregúntale su horario habitual de trabajo. Luego pon [ONBOARDING: horario]
+- Si paso es "horario": Guarda [MEMORIA: horario | <horario>] y pregúntale qué es lo más importante que quiere gestionar (agenda, clientes, tareas, recordatorios). Luego pon [ONBOARDING: prioridades]
+- Si paso es "prioridades": Guarda [MEMORIA: prioridades | <prioridades>] y dile que ya está todo listo, que desde mañana a las 8:00 recibirá su resumen diario y que puede pedirle lo que necesite. Luego pon [ONBOARDING: completado]
+
+REGLAS:
+- Máximo 3 líneas visibles por mensaje
+- Las líneas [MEMORIA...] y [ONBOARDING...] son invisibles para el usuario`
+  }
+
   return `Eres Aura, asistente personal de WhatsApp. Hablas en español, eres cercana y directa.
 
 FECHA Y HORA ACTUAL EN ESPAÑA: ${fechaHoy}, ${horaActual}
@@ -33,10 +54,9 @@ Si el usuario comparte datos personales guárdalos:
 [MEMORIA: clave | valor]
 
 2. RECORDATORIOS
-Si el usuario pide un recordatorio, responde confirmando y añade OBLIGATORIAMENTE esta línea:
+Si el usuario pide un recordatorio, responde confirmando y añade OBLIGATORIAMENTE:
 [RECORDATORIO: descripción | YYYY-MM-DD HH:MM]
-La hora debe estar en hora de España (no UTC).
-Ejemplo: [RECORDATORIO: Beber agua | ${yyyy}-${mm}-${dd} ${hh}:${String(parseInt(min) + 5).padStart(2, '0')}]
+La hora debe estar en hora de España.
 
 3. AGENDA
 [AGENDA: título | YYYY-MM-DD HH:MM | notas]
@@ -50,12 +70,11 @@ Completar: [TAREA_HECHA: descripción]
 
 REGLAS:
 - Máximo 4 líneas visibles
-- Las líneas técnicas NO las ve el usuario
+- Las líneas técnicas son invisibles para el usuario
 - Para recordatorios la línea [RECORDATORIO...] es OBLIGATORIA`
 }
 
 function parseMadridToUTC(fechaHora: string): string {
-  // fechaHora viene en hora Madrid (YYYY-MM-DD HH:MM), convertir a UTC restando 2h
   const [fecha, hora] = fechaHora.split(' ')
   const [h, m] = hora.split(':').map(Number)
   const date = new Date(`${fecha}T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`)
@@ -80,7 +99,14 @@ export async function respondAura(user: any, text: string) {
 
   let reply = completion.choices[0].message.content ?? 'Lo gestiono ahora!'
 
-  // RECORDATORIOS — primero intentar formato técnico
+  // ONBOARDING STEP
+  const onboardingMatch = reply.match(/\[ONBOARDING:\s*(.+?)\]/)
+  if (onboardingMatch) {
+    await saveMemory(user.id, 'onboarding_step', onboardingMatch[1].trim())
+    reply = reply.replace(onboardingMatch[0], '').trim()
+  }
+
+  // RECORDATORIOS
   const reminderMatch = reply.match(/\[RECORDATORIO:\s*(.+?)\s*\|\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\]/)
   if (reminderMatch) {
     const [, texto, fechaHora] = reminderMatch
@@ -92,8 +118,7 @@ export async function respondAura(user: any, text: string) {
     })
     reply = reply.replace(reminderMatch[0], '').trim()
   } else {
-    // Si GPT-4o no generó el formato, detectar por palabras clave y extraer hora del texto
-    const esRecordatorio = /recuérdame|recuerda|avísame|avisa|avísame|remind/i.test(text)
+    const esRecordatorio = /recuérdame|recuerda|avísame|avisa|remind/i.test(text)
     if (esRecordatorio) {
       const horaEnRespuesta = reply.match(/a las (\d{1,2}):(\d{2})/)
       if (horaEnRespuesta) {
@@ -128,14 +153,13 @@ export async function respondAura(user: any, text: string) {
     reply = reply.replace(agendaMatch[0], '').trim()
   }
 
-  // TAREAS NUEVAS
+  // TAREAS
   const taskMatches = [...reply.matchAll(/\[TAREA:\s*(.+?)\]/g)]
   for (const m of taskMatches) {
     await supabase.from('tasks').insert({ user_id: user.id, text: m[1].trim(), done: false })
     reply = reply.replace(m[0], '').trim()
   }
 
-  // TAREAS COMPLETADAS
   const taskDoneMatches = [...reply.matchAll(/\[TAREA_HECHA:\s*(.+?)\]/g)]
   for (const m of taskDoneMatches) {
     await supabase.from('tasks').update({ done: true }).eq('user_id', user.id).ilike('text', `%${m[1].trim()}%`)
@@ -149,7 +173,7 @@ export async function respondAura(user: any, text: string) {
     reply = reply.replace(m[0], '').trim()
   }
 
-  // MEMORIA PERMANENTE
+  // MEMORIA
   const memoryMatches = [...reply.matchAll(/\[MEMORIA:\s*(.+?)\s*\|\s*(.+?)\]/g)]
   for (const m of memoryMatches) {
     await saveMemory(user.id, m[1].trim().toLowerCase(), m[2].trim())
@@ -164,7 +188,7 @@ export async function respondAura(user: any, text: string) {
 export async function startOnboarding(user: any) {
   if (!user.phone) return
   await sendWhatsApp(user.phone,
-    `Hola! Soy Aura, tu asistente personal 💜\n\n¿Cómo te llamas?`
+    `¡Hola! 👋 Soy Aura, tu asistente personal de WhatsApp 💜\n\nEstoy aquí para organizarte la vida — agenda, recordatorios, tareas, contactos y mucho más.\n\n¿Cómo te llamas?`
   )
   await saveMemory(user.id, 'onboarding_step', 'nombre')
 }
