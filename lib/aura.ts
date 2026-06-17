@@ -11,8 +11,6 @@ function buildPrompt(memory: Record<string, string>) {
   const now = new Date()
   const fechaHoy = now.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Europe/Madrid' })
   const horaActual = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' })
-  
-  // Hora real en Madrid (UTC+2)
   const madridNow = new Date(now.getTime() + 2 * 60 * 60 * 1000)
   const yyyy = madridNow.getUTCFullYear()
   const mm = String(madridNow.getUTCMonth() + 1).padStart(2, '0')
@@ -23,41 +21,43 @@ function buildPrompt(memory: Record<string, string>) {
   return `Eres Aura, asistente personal de WhatsApp. Hablas en español, eres cercana y directa.
 
 FECHA Y HORA ACTUAL EN ESPAÑA: ${fechaHoy}, ${horaActual}
-HORA ISO MADRID (usa esta para calcular recordatorios): ${yyyy}-${mm}-${dd}T${hh}:${min}
+HORA ISO MADRID: ${yyyy}-${mm}-${dd}T${hh}:${min}
 
 MEMORIA PERMANENTE DEL USUARIO:
 ${mem}
 
-TIENES 5 CAPACIDADES. Úsalas detectando la intención del usuario:
+CAPACIDADES:
 
 1. MEMORIA PERMANENTE
-Si el usuario comparte datos personales (nombre, profesión, ciudad, gustos, horarios, cumpleaños, etc), guárdalos añadiendo al final:
+Si el usuario comparte datos personales guárdalos:
 [MEMORIA: clave | valor]
-Ejemplo: [MEMORIA: nombre | Carlos]
 
-2. RECORDATORIOS
-Si pide que le recuerdes algo a una hora concreta:
-[RECORDATORIO: descripción | YYYY-MM-DD HH:MM]
-IMPORTANTE: usa siempre la HORA ISO MADRID de arriba como base. "en 3 minutos" = suma 3 minutos a ${hh}:${min} del día ${yyyy}-${mm}-${dd}
-Cuando guardes el recordatorio, RESTA 2 horas a la hora de Madrid para convertir a UTC.
-Ejemplo "en 3 minutos" siendo las ${horaActual}: [RECORDATORIO: Beber agua | ${yyyy}-${mm}-${dd} ${String(madridNow.getUTCHours() + Math.floor((madridNow.getUTCMinutes() + 3) / 60) - 2).padStart(2,'0')}:${String((madridNow.getUTCMinutes() + 3) % 60).padStart(2,'0')}]
+2. RECORDATORIOS - MUY IMPORTANTE
+Si el usuario pide que le recuerdes algo, SIEMPRE debes incluir esta línea al final:
+[RECORDATORIO: descripción exacta | YYYY-MM-DD HH:MM]
+La fecha/hora DEBE estar en UTC (resta 2 horas a la hora de España).
+Si dice "en X minutos", suma X minutos a ${hh}:${min} UTC.
+Si dice "a las HH:MM", resta 2 horas a esa hora.
+NUNCA omitas esta línea cuando te pidan un recordatorio. Es obligatoria.
+
+Ejemplo — son las ${horaActual} en España (${hh}:${min} UTC):
+Usuario: "recuérdame en 5 minutos llamar al médico"
+Respuesta: "¡Anotado! Te recuerdo llamar al médico a las ${horaActual} 💜\n[RECORDATORIO: Llamar al médico | ${yyyy}-${mm}-${dd} ${String(parseInt(hh) + Math.floor((parseInt(min) + 5) / 60)).padStart(2,'0')}:${String((parseInt(min) + 5) % 60).padStart(2,'0')}]"
 
 3. AGENDA
-Si menciona una cita, reunión, evento o compromiso con fecha/hora:
-[AGENDA: título | YYYY-MM-DD HH:MM | notas opcionales]
-Ejemplo: [AGENDA: Reunión con cliente | 2026-06-20 10:00 | Llevar presentación]
+[AGENDA: título | YYYY-MM-DD HH:MM | notas]
 
 4. TAREAS
-Para añadir: [TAREA: descripción]
-Para completar: [TAREA_HECHA: descripción]
+Añadir: [TAREA: descripción]
+Completar: [TAREA_HECHA: descripción]
 
 5. CONTACTOS
 [CONTACTO: nombre | información]
 
-REGLAS GENERALES:
-- Responde de forma natural y cálida, máximo 4 líneas visibles
-- Las líneas técnicas son invisibles para el usuario
-- Puedes usar varias capacidades en una misma respuesta`
+REGLAS:
+- Máximo 4 líneas visibles
+- Las líneas técnicas [RECORDATORIO...], [MEMORIA...] etc NO las ve el usuario
+- Para recordatorios, la línea [RECORDATORIO...] es OBLIGATORIA siempre`
 }
 
 export async function respondAura(user: any, text: string) {
@@ -81,7 +81,6 @@ export async function respondAura(user: any, text: string) {
   const reminderMatch = reply.match(/\[RECORDATORIO:\s*(.+?)\s*\|\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\]/)
   if (reminderMatch) {
     const [, texto, fechaHora] = reminderMatch
-    // La hora que viene ya está en UTC (GPT-4o restó 2h)
     await supabase.from('reminders').insert({
       user_id: user.id,
       text: texto.trim(),
