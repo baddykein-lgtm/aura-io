@@ -9,12 +9,21 @@ function buildPrompt(memory: Record<string, string>) {
     .map(([k, v]) => `- ${k}: ${v}`).join('\n') || 'Aún no sé nada de este usuario'
 
   const now = new Date()
-  const fechaHoy = now.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
-  const horaActual = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+  const fechaHoy = now.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Europe/Madrid' })
+  const horaActual = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' })
+  
+  const madridOffset = 2
+  const madridNow = new Date(now.getTime() + madridOffset * 60 * 60 * 1000)
+  const yyyy = madridNow.getUTCFullYear()
+  const mm = String(madridNow.getUTCMonth() + 1).padStart(2, '0')
+  const dd = String(madridNow.getUTCDate()).padStart(2, '0')
+  const hh = String(madridNow.getUTCHours()).padStart(2, '0')
+  const min = String(madridNow.getUTCMinutes()).padStart(2, '0')
 
   return `Eres Aura, asistente personal de WhatsApp. Hablas en español, eres cercana y directa.
 
-FECHA Y HORA ACTUAL: ${fechaHoy}, ${horaActual}
+FECHA Y HORA ACTUAL EN ESPAÑA: ${fechaHoy}, ${horaActual}
+HORA EN FORMATO ISO (úsala para calcular fechas): ${yyyy}-${mm}-${dd}T${hh}:${min}
 
 MEMORIA PERMANENTE DEL USUARIO:
 ${mem}
@@ -29,7 +38,8 @@ Ejemplo: [MEMORIA: nombre | Carlos]
 2. RECORDATORIOS
 Si pide que le recuerdes algo a una hora concreta:
 [RECORDATORIO: descripción | YYYY-MM-DD HH:MM]
-Ejemplo: [RECORDATORIO: Llamar al médico | ${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()+10).padStart(2,'0')}]
+IMPORTANTE: usa siempre la hora ISO de arriba como base para calcular. "en 3 minutos" = suma 3 minutos a ${hh}:${min} del día ${yyyy}-${mm}-${dd}
+Ejemplo "en 3 minutos": [RECORDATORIO: Beber agua | ${yyyy}-${mm}-${dd} ${hh}:${String(madridNow.getUTCMinutes() + 3).padStart(2, '0')}]
 
 3. AGENDA
 Si menciona una cita, reunión, evento o compromiso con fecha/hora:
@@ -40,20 +50,16 @@ Ejemplo: [AGENDA: Reunión con cliente | 2026-06-20 10:00 | Llevar presentación
 Si quiere apuntar algo pendiente sin hora exacta, o completar una tarea:
 Para añadir: [TAREA: descripción]
 Para completar: [TAREA_HECHA: descripción]
-Ejemplo añadir: [TAREA: Comprar material de oficina]
-Ejemplo completar: [TAREA_HECHA: Comprar material de oficina]
 
 5. CONTACTOS
-Si menciona una persona con información relevante (cliente, proveedor, familiar, etc):
+Si menciona una persona con información relevante:
 [CONTACTO: nombre | información]
-Ejemplo: [CONTACTO: María García | Clienta de fisioterapia, alérgica al ibuprofeno]
 
 REGLAS GENERALES:
 - Responde de forma natural y cálida, máximo 4 líneas visibles
-- Las líneas técnicas [MEMORIA...], [RECORDATORIO...], etc son invisibles para el usuario
+- Las líneas técnicas son invisibles para el usuario
 - Puedes usar varias capacidades en una misma respuesta
-- Si el usuario pregunta "qué tareas tengo", "qué tengo en agenda", "qué sabes de mí", responde usando la memoria y los datos que tienes
-- Calcula fechas/horas exactas a partir de la hora actual indicada arriba`
+- Calcula siempre las fechas usando la hora ISO de arriba como referencia`
 }
 
 export async function respondAura(user: any, text: string) {
