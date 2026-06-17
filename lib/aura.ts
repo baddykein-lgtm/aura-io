@@ -12,8 +12,8 @@ function buildPrompt(memory: Record<string, string>) {
   const fechaHoy = now.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Europe/Madrid' })
   const horaActual = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' })
   
-  const madridOffset = 2
-  const madridNow = new Date(now.getTime() + madridOffset * 60 * 60 * 1000)
+  // Hora real en Madrid (UTC+2)
+  const madridNow = new Date(now.getTime() + 2 * 60 * 60 * 1000)
   const yyyy = madridNow.getUTCFullYear()
   const mm = String(madridNow.getUTCMonth() + 1).padStart(2, '0')
   const dd = String(madridNow.getUTCDate()).padStart(2, '0')
@@ -23,7 +23,7 @@ function buildPrompt(memory: Record<string, string>) {
   return `Eres Aura, asistente personal de WhatsApp. Hablas en español, eres cercana y directa.
 
 FECHA Y HORA ACTUAL EN ESPAÑA: ${fechaHoy}, ${horaActual}
-HORA EN FORMATO ISO (úsala para calcular fechas): ${yyyy}-${mm}-${dd}T${hh}:${min}
+HORA ISO MADRID (usa esta para calcular recordatorios): ${yyyy}-${mm}-${dd}T${hh}:${min}
 
 MEMORIA PERMANENTE DEL USUARIO:
 ${mem}
@@ -38,8 +38,9 @@ Ejemplo: [MEMORIA: nombre | Carlos]
 2. RECORDATORIOS
 Si pide que le recuerdes algo a una hora concreta:
 [RECORDATORIO: descripción | YYYY-MM-DD HH:MM]
-IMPORTANTE: usa siempre la hora ISO de arriba como base para calcular. "en 3 minutos" = suma 3 minutos a ${hh}:${min} del día ${yyyy}-${mm}-${dd}
-Ejemplo "en 3 minutos": [RECORDATORIO: Beber agua | ${yyyy}-${mm}-${dd} ${hh}:${String(madridNow.getUTCMinutes() + 3).padStart(2, '0')}]
+IMPORTANTE: usa siempre la HORA ISO MADRID de arriba como base. "en 3 minutos" = suma 3 minutos a ${hh}:${min} del día ${yyyy}-${mm}-${dd}
+Cuando guardes el recordatorio, RESTA 2 horas a la hora de Madrid para convertir a UTC.
+Ejemplo "en 3 minutos" siendo las ${horaActual}: [RECORDATORIO: Beber agua | ${yyyy}-${mm}-${dd} ${String(madridNow.getUTCHours() + Math.floor((madridNow.getUTCMinutes() + 3) / 60) - 2).padStart(2,'0')}:${String((madridNow.getUTCMinutes() + 3) % 60).padStart(2,'0')}]
 
 3. AGENDA
 Si menciona una cita, reunión, evento o compromiso con fecha/hora:
@@ -47,19 +48,16 @@ Si menciona una cita, reunión, evento o compromiso con fecha/hora:
 Ejemplo: [AGENDA: Reunión con cliente | 2026-06-20 10:00 | Llevar presentación]
 
 4. TAREAS
-Si quiere apuntar algo pendiente sin hora exacta, o completar una tarea:
 Para añadir: [TAREA: descripción]
 Para completar: [TAREA_HECHA: descripción]
 
 5. CONTACTOS
-Si menciona una persona con información relevante:
 [CONTACTO: nombre | información]
 
 REGLAS GENERALES:
 - Responde de forma natural y cálida, máximo 4 líneas visibles
 - Las líneas técnicas son invisibles para el usuario
-- Puedes usar varias capacidades en una misma respuesta
-- Calcula siempre las fechas usando la hora ISO de arriba como referencia`
+- Puedes usar varias capacidades en una misma respuesta`
 }
 
 export async function respondAura(user: any, text: string) {
@@ -83,10 +81,11 @@ export async function respondAura(user: any, text: string) {
   const reminderMatch = reply.match(/\[RECORDATORIO:\s*(.+?)\s*\|\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\]/)
   if (reminderMatch) {
     const [, texto, fechaHora] = reminderMatch
+    // La hora que viene ya está en UTC (GPT-4o restó 2h)
     await supabase.from('reminders').insert({
       user_id: user.id,
       text: texto.trim(),
-      scheduled_at: new Date(fechaHora.replace(' ', 'T') + ':00').toISOString(),
+      scheduled_at: new Date(fechaHora.replace(' ', 'T') + ':00Z').toISOString(),
       sent: false
     })
     reply = reply.replace(reminderMatch[0], '').trim()
@@ -99,7 +98,7 @@ export async function respondAura(user: any, text: string) {
     await supabase.from('agenda').insert({
       user_id: user.id,
       title: titulo.trim(),
-      starts_at: new Date(fechaHora.replace(' ', 'T') + ':00').toISOString(),
+      starts_at: new Date(fechaHora.replace(' ', 'T') + ':00Z').toISOString(),
       notes: notas?.trim() ?? null
     })
     reply = reply.replace(agendaMatch[0], '').trim()
