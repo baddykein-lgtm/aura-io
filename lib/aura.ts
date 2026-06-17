@@ -16,35 +16,44 @@ function buildPrompt(memory: Record<string, string>) {
 
 FECHA Y HORA ACTUAL: ${fechaHoy}, ${horaActual}
 
-MEMORIA PERMANENTE QUE TIENES DE ESTE USUARIO:
+MEMORIA PERMANENTE DEL USUARIO:
 ${mem}
 
-CAPACIDAD 1 - MEMORIA PERMANENTE:
-Si el usuario comparte información personal relevante (su nombre, profesión, ciudad, gustos, horarios habituales, nombres de familiares/clientes, preferencias, fecha de cumpleaños, etc), DEBES guardarlo.
-Añade al final de tu respuesta, en líneas separadas, una línea por cada dato nuevo con este formato EXACTO:
+TIENES 5 CAPACIDADES. Úsalas detectando la intención del usuario:
+
+1. MEMORIA PERMANENTE
+Si el usuario comparte datos personales (nombre, profesión, ciudad, gustos, horarios, cumpleaños, etc), guárdalos añadiendo al final:
 [MEMORIA: clave | valor]
+Ejemplo: [MEMORIA: nombre | Carlos]
 
-Usa claves simples en minúsculas sin espacios: nombre, profesion, ciudad, cumpleanos, etc.
-Ejemplo: si dice "soy Carlos, fisio en Madrid":
-[MEMORIA: nombre | Carlos]
-[MEMORIA: profesion | fisioterapeuta]
-[MEMORIA: ciudad | Madrid]
+2. RECORDATORIOS
+Si pide que le recuerdes algo a una hora concreta:
+[RECORDATORIO: descripción | YYYY-MM-DD HH:MM]
+Ejemplo: [RECORDATORIO: Llamar al médico | ${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()+10).padStart(2,'0')}]
 
-Si el usuario pregunta "qué sabes de mí" o similar, responde con la información de tu memoria permanente de forma natural y cálida.
+3. AGENDA
+Si menciona una cita, reunión, evento o compromiso con fecha/hora:
+[AGENDA: título | YYYY-MM-DD HH:MM | notas opcionales]
+Ejemplo: [AGENDA: Reunión con cliente | 2026-06-20 10:00 | Llevar presentación]
 
-CAPACIDAD 2 - RECORDATORIOS:
-Si el usuario te pide que le recuerdes algo (usa palabras como "recuérdame", "avísame", "no dejes que olvide"), añade SIEMPRE al final, en una línea nueva, este formato:
-[RECORDATORIO:  | ]
+4. TAREAS
+Si quiere apuntar algo pendiente sin hora exacta, o completar una tarea:
+Para añadir: [TAREA: descripción]
+Para completar: [TAREA_HECHA: descripción]
+Ejemplo añadir: [TAREA: Comprar material de oficina]
+Ejemplo completar: [TAREA_HECHA: Comprar material de oficina]
 
-Ejemplo: "recuérdame beber agua en 5 minutos" (ahora son las ${horaActual} del ${fechaHoy}):
-[RECORDATORIO: Beber agua | ${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()+5).padStart(2,'0')}]
+5. CONTACTOS
+Si menciona una persona con información relevante (cliente, proveedor, familiar, etc):
+[CONTACTO: nombre | información]
+Ejemplo: [CONTACTO: María García | Clienta de fisioterapia, alérgica al ibuprofeno]
 
-Calcula siempre la fecha/hora real sumando a la hora actual de arriba.
-
-OTRAS REGLAS:
-- Máximo 4 líneas de texto visible (sin contar las líneas técnicas [MEMORIA...] y [RECORDATORIO...])
-- Las líneas [MEMORIA...] y [RECORDATORIO...] son invisibles para el usuario, solo las usas tú internamente
-- Si no hay nada que recordar ni guardar, no incluyas esas líneas`
+REGLAS GENERALES:
+- Responde de forma natural y cálida, máximo 4 líneas visibles
+- Las líneas técnicas [MEMORIA...], [RECORDATORIO...], etc son invisibles para el usuario
+- Puedes usar varias capacidades en una misma respuesta
+- Si el usuario pregunta "qué tareas tengo", "qué tengo en agenda", "qué sabes de mí", responde usando la memoria y los datos que tienes
+- Calcula fechas/horas exactas a partir de la hora actual indicada arriba`
 }
 
 export async function respondAura(user: any, text: string) {
@@ -54,7 +63,7 @@ export async function respondAura(user: any, text: string) {
 
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o',
-    max_tokens: 400,
+    max_tokens: 500,
     messages: [
       { role: 'system', content: buildPrompt(memory) },
       ...history,
@@ -64,24 +73,57 @@ export async function respondAura(user: any, text: string) {
 
   let reply = completion.choices[0].message.content ?? 'Lo gestiono ahora!'
 
-  // Detectar y guardar recordatorios
+  // RECORDATORIOS
   const reminderMatch = reply.match(/\[RECORDATORIO:\s*(.+?)\s*\|\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\]/)
   if (reminderMatch) {
-    const [, recordatorioTexto, fechaHora] = reminderMatch
+    const [, texto, fechaHora] = reminderMatch
     await supabase.from('reminders').insert({
       user_id: user.id,
-      text: recordatorioTexto.trim(),
+      text: texto.trim(),
       scheduled_at: new Date(fechaHora.replace(' ', 'T') + ':00').toISOString(),
       sent: false
     })
     reply = reply.replace(reminderMatch[0], '').trim()
   }
 
-  // Detectar y guardar datos de memoria permanente (pueden ser varios)
+  // AGENDA
+  const agendaMatch = reply.match(/\[AGENDA:\s*(.+?)\s*\|\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\s*(?:\|\s*(.+?))?\]/)
+  if (agendaMatch) {
+    const [, titulo, fechaHora, notas] = agendaMatch
+    await supabase.from('agenda').insert({
+      user_id: user.id,
+      title: titulo.trim(),
+      starts_at: new Date(fechaHora.replace(' ', 'T') + ':00').toISOString(),
+      notes: notas?.trim() ?? null
+    })
+    reply = reply.replace(agendaMatch[0], '').trim()
+  }
+
+  // TAREAS NUEVAS
+  const taskMatches = [...reply.matchAll(/\[TAREA:\s*(.+?)\]/g)]
+  for (const m of taskMatches) {
+    await supabase.from('tasks').insert({ user_id: user.id, text: m[1].trim(), done: false })
+    reply = reply.replace(m[0], '').trim()
+  }
+
+  // TAREAS COMPLETADAS
+  const taskDoneMatches = [...reply.matchAll(/\[TAREA_HECHA:\s*(.+?)\]/g)]
+  for (const m of taskDoneMatches) {
+    await supabase.from('tasks').update({ done: true }).eq('user_id', user.id).ilike('text', `%${m[1].trim()}%`)
+    reply = reply.replace(m[0], '').trim()
+  }
+
+  // CONTACTOS
+  const contactMatches = [...reply.matchAll(/\[CONTACTO:\s*(.+?)\s*\|\s*(.+?)\]/g)]
+  for (const m of contactMatches) {
+    await supabase.from('contacts').insert({ user_id: user.id, name: m[1].trim(), info: m[2].trim() })
+    reply = reply.replace(m[0], '').trim()
+  }
+
+  // MEMORIA PERMANENTE
   const memoryMatches = [...reply.matchAll(/\[MEMORIA:\s*(.+?)\s*\|\s*(.+?)\]/g)]
   for (const m of memoryMatches) {
-    const [, clave, valor] = m
-    await saveMemory(user.id, clave.trim().toLowerCase(), valor.trim())
+    await saveMemory(user.id, m[1].trim().toLowerCase(), m[2].trim())
     reply = reply.replace(m[0], '').trim()
   }
 
