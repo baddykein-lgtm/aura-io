@@ -32,17 +32,11 @@ CAPACIDADES:
 Si el usuario comparte datos personales guárdalos:
 [MEMORIA: clave | valor]
 
-2. RECORDATORIOS - MUY IMPORTANTE
-Si el usuario pide que le recuerdes algo, SIEMPRE debes incluir esta línea al final:
-[RECORDATORIO: descripción exacta | YYYY-MM-DD HH:MM]
-La fecha/hora DEBE estar en UTC (resta 2 horas a la hora de España).
-Si dice "en X minutos", suma X minutos a ${hh}:${min} UTC.
-Si dice "a las HH:MM", resta 2 horas a esa hora.
-NUNCA omitas esta línea cuando te pidan un recordatorio. Es obligatoria.
-
-Ejemplo — son las ${horaActual} en España (${hh}:${min} UTC):
-Usuario: "recuérdame en 5 minutos llamar al médico"
-Respuesta: "¡Anotado! Te recuerdo llamar al médico a las ${horaActual} 💜\n[RECORDATORIO: Llamar al médico | ${yyyy}-${mm}-${dd} ${String(parseInt(hh) + Math.floor((parseInt(min) + 5) / 60)).padStart(2,'0')}:${String((parseInt(min) + 5) % 60).padStart(2,'0')}]"
+2. RECORDATORIOS
+Si el usuario pide un recordatorio, responde confirmando y añade OBLIGATORIAMENTE esta línea:
+[RECORDATORIO: descripción | YYYY-MM-DD HH:MM]
+La hora debe estar en hora de España (no UTC).
+Ejemplo: [RECORDATORIO: Beber agua | ${yyyy}-${mm}-${dd} ${hh}:${String(parseInt(min) + 5).padStart(2, '0')}]
 
 3. AGENDA
 [AGENDA: título | YYYY-MM-DD HH:MM | notas]
@@ -56,8 +50,17 @@ Completar: [TAREA_HECHA: descripción]
 
 REGLAS:
 - Máximo 4 líneas visibles
-- Las líneas técnicas [RECORDATORIO...], [MEMORIA...] etc NO las ve el usuario
-- Para recordatorios, la línea [RECORDATORIO...] es OBLIGATORIA siempre`
+- Las líneas técnicas NO las ve el usuario
+- Para recordatorios la línea [RECORDATORIO...] es OBLIGATORIA`
+}
+
+function parseMadridToUTC(fechaHora: string): string {
+  // fechaHora viene en hora Madrid (YYYY-MM-DD HH:MM), convertir a UTC restando 2h
+  const [fecha, hora] = fechaHora.split(' ')
+  const [h, m] = hora.split(':').map(Number)
+  const date = new Date(`${fecha}T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`)
+  date.setHours(date.getHours() - 2)
+  return date.toISOString()
 }
 
 export async function respondAura(user: any, text: string) {
@@ -77,17 +80,39 @@ export async function respondAura(user: any, text: string) {
 
   let reply = completion.choices[0].message.content ?? 'Lo gestiono ahora!'
 
-  // RECORDATORIOS
+  // RECORDATORIOS — primero intentar formato técnico
   const reminderMatch = reply.match(/\[RECORDATORIO:\s*(.+?)\s*\|\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\]/)
   if (reminderMatch) {
     const [, texto, fechaHora] = reminderMatch
     await supabase.from('reminders').insert({
       user_id: user.id,
       text: texto.trim(),
-      scheduled_at: new Date(fechaHora.replace(' ', 'T') + ':00Z').toISOString(),
+      scheduled_at: parseMadridToUTC(fechaHora),
       sent: false
     })
     reply = reply.replace(reminderMatch[0], '').trim()
+  } else {
+    // Si GPT-4o no generó el formato, detectar por palabras clave y extraer hora del texto
+    const esRecordatorio = /recuérdame|recuerda|avísame|avisa|avísame|remind/i.test(text)
+    if (esRecordatorio) {
+      const horaEnRespuesta = reply.match(/a las (\d{1,2}):(\d{2})/)
+      if (horaEnRespuesta) {
+        const now = new Date()
+        const madridNow = new Date(now.getTime() + 2 * 60 * 60 * 1000)
+        const yyyy = madridNow.getUTCFullYear()
+        const mm = String(madridNow.getUTCMonth() + 1).padStart(2, '0')
+        const dd = String(madridNow.getUTCDate()).padStart(2, '0')
+        const h = horaEnRespuesta[1].padStart(2, '0')
+        const m = horaEnRespuesta[2]
+        const fechaHora = `${yyyy}-${mm}-${dd} ${h}:${m}`
+        await supabase.from('reminders').insert({
+          user_id: user.id,
+          text: text.replace(/recuérdame|recuerda|avísame/i, '').trim(),
+          scheduled_at: parseMadridToUTC(fechaHora),
+          sent: false
+        })
+      }
+    }
   }
 
   // AGENDA
@@ -97,7 +122,7 @@ export async function respondAura(user: any, text: string) {
     await supabase.from('agenda').insert({
       user_id: user.id,
       title: titulo.trim(),
-      starts_at: new Date(fechaHora.replace(' ', 'T') + ':00Z').toISOString(),
+      starts_at: parseMadridToUTC(fechaHora),
       notes: notas?.trim() ?? null
     })
     reply = reply.replace(agendaMatch[0], '').trim()
