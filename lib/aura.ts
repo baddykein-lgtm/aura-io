@@ -5,10 +5,7 @@ import { createCalendarEvent } from './calendar'
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
-function buildPrompt(memory: Record<string, string>) {
-  const mem = Object.entries(memory)
-    .map(([k, v]) => `- ${k}: ${v}`).join('\n') || 'Aún no sé nada de este usuario'
-
+function getMadridTimeInfo() {
   const now = new Date()
   const fechaHoy = now.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Europe/Madrid' })
   const horaActual = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' })
@@ -18,62 +15,7 @@ function buildPrompt(memory: Record<string, string>) {
   const dd = String(madridNow.getUTCDate()).padStart(2, '0')
   const hh = String(madridNow.getUTCHours()).padStart(2, '0')
   const min = String(madridNow.getUTCMinutes()).padStart(2, '0')
-
-  const onboardingStep = memory['onboarding_step']
-
-  if (onboardingStep && onboardingStep !== 'completado') {
-    return `Eres Aura, asistente personal de WhatsApp. Hablas en español, eres cercana y cálida.
-Estás conociendo a un nuevo usuario. Sigue el onboarding paso a paso.
-
-PASO ACTUAL: ${onboardingStep}
-LO QUE YA SABES: ${mem}
-
-INSTRUCCIONES SEGÚN EL PASO:
-- Si paso es "nombre": El usuario acaba de decirte su nombre. Salúdale por su nombre, guarda [MEMORIA: nombre | <nombre>] y pregúntale a qué se dedica. Luego pon [ONBOARDING: profesion]
-- Si paso es "profesion": Guarda [MEMORIA: profesion | <profesion>] y pregúntale su horario habitual de trabajo. Luego pon [ONBOARDING: horario]
-- Si paso es "horario": Guarda [MEMORIA: horario | <horario>] y pregúntale qué es lo más importante que quiere gestionar. Luego pon [ONBOARDING: prioridades]
-- Si paso es "prioridades": Guarda [MEMORIA: prioridades | <prioridades>] y dile que ya está todo listo, que desde mañana a las 8:00 recibirá su resumen diario. Luego pon [ONBOARDING: completado]
-
-REGLAS:
-- Máximo 3 líneas visibles
-- Las líneas [MEMORIA...] y [ONBOARDING...] son invisibles para el usuario`
-  }
-
-  return `Eres Aura, asistente personal de WhatsApp. Hablas en español, eres cercana y directa.
-
-FECHA Y HORA ACTUAL EN ESPAÑA: ${fechaHoy}, ${horaActual}
-HORA ISO MADRID: ${yyyy}-${mm}-${dd}T${hh}:${min}
-
-MEMORIA PERMANENTE DEL USUARIO:
-${mem}
-
-CAPACIDADES:
-
-1. MEMORIA PERMANENTE
-Si el usuario comparte datos personales guárdalos:
-[MEMORIA: clave | valor]
-
-2. RECORDATORIOS
-Si el usuario pide un recordatorio, responde confirmando y añade OBLIGATORIAMENTE:
-[RECORDATORIO: descripción | YYYY-MM-DD HH:MM]
-La hora debe estar en hora de España.
-
-3. AGENDA Y GOOGLE CALENDAR
-Si menciona una cita, reunión o evento con fecha/hora, añade:
-[AGENDA: título | YYYY-MM-DD HH:MM | notas]
-Esto lo crea automáticamente en su Google Calendar.
-
-4. TAREAS
-Añadir: [TAREA: descripción]
-Completar: [TAREA_HECHA: descripción]
-
-5. CONTACTOS
-[CONTACTO: nombre | información]
-
-REGLAS:
-- Máximo 4 líneas visibles
-- Las líneas técnicas son invisibles para el usuario
-- Para recordatorios la línea [RECORDATORIO...] es OBLIGATORIA`
+  return { fechaHoy, horaActual, yyyy, mm, dd, hh, min }
 }
 
 function parseMadridToUTC(fechaHora: string): string {
@@ -84,104 +26,168 @@ function parseMadridToUTC(fechaHora: string): string {
   return date.toISOString()
 }
 
+// ── CONVERSACIÓN NATURAL ──────────────────────────────
+function buildConversationPrompt(memory: Record<string, string>) {
+  const mem = Object.entries(memory)
+    .filter(([k]) => k !== 'onboarding_step')
+    .map(([k, v]) => `- ${k}: ${v}`).join('\n') || 'Aún no sé nada de este usuario'
+
+  const { fechaHoy, horaActual } = getMadridTimeInfo()
+  const onboardingStep = memory['onboarding_step']
+
+  if (onboardingStep && onboardingStep !== 'completado') {
+    return `Eres Aura, asistente personal de WhatsApp. Hablas en español, eres cercana y cálida.
+Estás conociendo a un nuevo usuario. PASO ACTUAL DEL ONBOARDING: ${onboardingStep}
+LO QUE YA SABES: ${mem}
+
+- Si paso es "nombre": el usuario te acaba de decir su nombre. Salúdale y pregúntale a qué se dedica.
+- Si paso es "profesion": pregúntale su horario habitual de trabajo.
+- Si paso es "horario": pregúntale qué es lo más importante que quiere gestionar (agenda, clientes, tareas, recordatorios).
+- Si paso es "prioridades": dile que ya está todo listo y que puede pedirte lo que necesite.
+
+Responde de forma natural y cálida, máximo 3 líneas. NO uses corchetes ni formato técnico, solo conversa.`
+  }
+
+  return `Eres Aura, asistente personal de WhatsApp. Hablas en español, eres cercana, directa y cálida.
+
+FECHA Y HORA ACTUAL EN ESPAÑA: ${fechaHoy}, ${horaActual}
+
+MEMORIA PERMANENTE DEL USUARIO:
+${mem}
+
+Responde de forma natural y útil, máximo 4 líneas. Usa la memoria para personalizar tus respuestas.
+Si el usuario pregunta qué sabes de él, díselo basándote en la memoria de arriba.
+NO uses corchetes ni formato técnico — solo conversa de forma natural y cálida.`
+}
+
+// ── EXTRACCIÓN ESTRUCTURADA (JSON mode, fiable) ──────
+async function extractStructuredData(userText: string, auraReply: string, memory: Record<string, string>) {
+  const { fechaHoy, horaActual, yyyy, mm, dd, hh, min } = getMadridTimeInfo()
+  const onboardingStep = memory['onboarding_step']
+
+  const systemPrompt = `Analizas un mensaje de WhatsApp entre un usuario y su asistente Aura. Tu única tarea es extraer datos estructurados que deben guardarse, en JSON.
+
+FECHA Y HORA ACTUAL EN ESPAÑA: ${fechaHoy}, ${horaActual}
+HORA ISO MADRID: ${yyyy}-${mm}-${dd}T${hh}:${min}
+PASO DE ONBOARDING ACTUAL: ${onboardingStep ?? 'ninguno'}
+
+Devuelve SIEMPRE un JSON con esta forma exacta (usa arrays vacíos si no aplica):
+{
+  "memoria": [{"clave": "nombre", "valor": "Carlos"}],
+  "recordatorios": [{"texto": "Llamar al médico", "fecha_hora": "YYYY-MM-DD HH:MM"}],
+  "agenda": [{"titulo": "Reunión cliente", "fecha_hora": "YYYY-MM-DD HH:MM", "notas": "opcional o null"}],
+  "tareas_nuevas": [{"texto": "Comprar material"}],
+  "tareas_completadas": [{"texto": "texto que coincida con una tarea existente"}],
+  "contactos": [{"nombre": "María García", "info": "Clienta, alergia ibuprofeno"}],
+  "siguiente_paso_onboarding": "nombre|profesion|horario|prioridades|completado|null"
+}
+
+REGLAS DE EXTRACCIÓN:
+- "memoria": cualquier dato personal duradero que el usuario comparta (nombre, profesión, ciudad, gustos, horarios habituales, cumpleaños, alergias propias, etc). Claves en minúsculas sin espacios.
+- "recordatorios": SIEMPRE que el usuario pida que le recuerden algo a una hora/fecha. Calcula fecha_hora en HORA DE ESPAÑA (no UTC) sumando/restando desde la hora actual de arriba. Si dice "en X minutos/horas", suma a la hora actual. Si dice "mañana a las X", usa el día siguiente.
+- "agenda": citas, reuniones o eventos con fecha/hora específica.
+- "tareas_nuevas": cosas pendientes SIN hora específica ("apúntame que...", "tengo que...").
+- "tareas_completadas": cuando el usuario dice que ya hizo algo que estaba pendiente.
+- "contactos": personas mencionadas con información relevante de seguir (clientes, proveedores, etc).
+- "siguiente_paso_onboarding": SOLO rellena esto si PASO DE ONBOARDING ACTUAL no es null. Indica a qué paso pasar después de esta respuesta del usuario, basándote en lo que Aura ya respondió.
+- Si no hay nada que extraer en una categoría, deja el array vacío.
+- Sé generoso extrayendo memoria — cualquier dato personal compartido cuenta, no solo si lo pide explícitamente.`
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      response_format: { type: 'json_object' },
+      max_tokens: 600,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `MENSAJE DEL USUARIO: "${userText}"\n\nRESPUESTA DE AURA: "${auraReply}"` }
+      ]
+    })
+    return JSON.parse(completion.choices[0].message.content ?? '{}')
+  } catch (e) {
+    console.error('Error extrayendo datos estructurados:', e)
+    return {}
+  }
+}
+
 export async function respondAura(user: any, text: string) {
   const [memory, history] = await Promise.all([
     getMemory(user.id), getHistory(user.id)
   ])
 
+  // 1. Respuesta conversacional natural
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o',
-    max_tokens: 500,
+    max_tokens: 300,
     messages: [
-      { role: 'system', content: buildPrompt(memory) },
+      { role: 'system', content: buildConversationPrompt(memory) },
       ...history,
       { role: 'user', content: text }
     ]
   })
 
-  let reply = completion.choices[0].message.content ?? 'Lo gestiono ahora!'
+  const reply = completion.choices[0].message.content ?? 'Lo gestiono ahora!'
 
-  // ONBOARDING
-  const onboardingMatch = reply.match(/\[ONBOARDING:\s*(.+?)\]/)
-  if (onboardingMatch) {
-    await saveMemory(user.id, 'onboarding_step', onboardingMatch[1].trim())
-    reply = reply.replace(onboardingMatch[0], '').trim()
-  }
+  // 2. Extracción estructurada fiable (JSON mode)
+  const data = await extractStructuredData(text, reply, memory)
 
-  // RECORDATORIOS
-  const reminderMatch = reply.match(/\[RECORDATORIO:\s*(.+?)\s*\|\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\]/)
-  if (reminderMatch) {
-    const [, texto, fechaHora] = reminderMatch
-    await supabase.from('reminders').insert({
-      user_id: user.id,
-      text: texto.trim(),
-      scheduled_at: parseMadridToUTC(fechaHora),
-      sent: false
-    })
-    reply = reply.replace(reminderMatch[0], '').trim()
-  } else {
-    const esRecordatorio = /recuérdame|recuerda|avísame|avisa|remind/i.test(text)
-    if (esRecordatorio) {
-      const horaEnRespuesta = reply.match(/a las (\d{1,2}):(\d{2})/)
-      if (horaEnRespuesta) {
-        const now = new Date()
-        const madridNow = new Date(now.getTime() + 2 * 60 * 60 * 1000)
-        const yyyy = madridNow.getUTCFullYear()
-        const mm = String(madridNow.getUTCMonth() + 1).padStart(2, '0')
-        const dd = String(madridNow.getUTCDate()).padStart(2, '0')
-        const h = horaEnRespuesta[1].padStart(2, '0')
-        const m = horaEnRespuesta[2]
-        const fechaHora = `${yyyy}-${mm}-${dd} ${h}:${m}`
-        await supabase.from('reminders').insert({
-          user_id: user.id,
-          text: text.replace(/recuérdame|recuerda|avísame/i, '').trim(),
-          scheduled_at: parseMadridToUTC(fechaHora),
-          sent: false
-        })
-      }
+  // Guardar memoria
+  for (const item of data.memoria ?? []) {
+    if (item.clave && item.valor) {
+      await saveMemory(user.id, String(item.clave).toLowerCase().trim(), String(item.valor).trim())
     }
   }
 
-  // AGENDA + GOOGLE CALENDAR
-  const agendaMatch = reply.match(/\[AGENDA:\s*(.+?)\s*\|\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\s*(?:\|\s*(.+?))?\]/)
-  if (agendaMatch) {
-    const [, titulo, fechaHora, notas] = agendaMatch
-    const utcTime = parseMadridToUTC(fechaHora)
-    await supabase.from('agenda').insert({
-      user_id: user.id,
-      title: titulo.trim(),
-      starts_at: utcTime,
-      notes: notas?.trim() ?? null
-    })
-    await createCalendarEvent(user.id, titulo.trim(), utcTime, notas?.trim())
-    reply = reply.replace(agendaMatch[0], '').trim()
+  // Onboarding
+  if (data.siguiente_paso_onboarding && data.siguiente_paso_onboarding !== 'null') {
+    await saveMemory(user.id, 'onboarding_step', data.siguiente_paso_onboarding)
   }
 
-  // TAREAS
-  const taskMatches = [...reply.matchAll(/\[TAREA:\s*(.+?)\]/g)]
-  for (const m of taskMatches) {
-    await supabase.from('tasks').insert({ user_id: user.id, text: m[1].trim(), done: false })
-    reply = reply.replace(m[0], '').trim()
+  // Recordatorios
+  for (const r of data.recordatorios ?? []) {
+    if (r.texto && r.fecha_hora) {
+      await supabase.from('reminders').insert({
+        user_id: user.id,
+        text: r.texto.trim(),
+        scheduled_at: parseMadridToUTC(r.fecha_hora),
+        sent: false
+      })
+    }
   }
 
-  const taskDoneMatches = [...reply.matchAll(/\[TAREA_HECHA:\s*(.+?)\]/g)]
-  for (const m of taskDoneMatches) {
-    await supabase.from('tasks').update({ done: true }).eq('user_id', user.id).ilike('text', `%${m[1].trim()}%`)
-    reply = reply.replace(m[0], '').trim()
+  // Agenda + Google Calendar
+  for (const a of data.agenda ?? []) {
+    if (a.titulo && a.fecha_hora) {
+      const utcTime = parseMadridToUTC(a.fecha_hora)
+      await supabase.from('agenda').insert({
+        user_id: user.id,
+        title: a.titulo.trim(),
+        starts_at: utcTime,
+        notes: a.notas ?? null
+      })
+      await createCalendarEvent(user.id, a.titulo.trim(), utcTime, a.notas)
+    }
   }
 
-  // CONTACTOS
-  const contactMatches = [...reply.matchAll(/\[CONTACTO:\s*(.+?)\s*\|\s*(.+?)\]/g)]
-  for (const m of contactMatches) {
-    await supabase.from('contacts').insert({ user_id: user.id, name: m[1].trim(), info: m[2].trim() })
-    reply = reply.replace(m[0], '').trim()
+  // Tareas nuevas
+  for (const t of data.tareas_nuevas ?? []) {
+    if (t.texto) {
+      await supabase.from('tasks').insert({ user_id: user.id, text: t.texto.trim(), done: false })
+    }
   }
 
-  // MEMORIA
-  const memoryMatches = [...reply.matchAll(/\[MEMORIA:\s*(.+?)\s*\|\s*(.+?)\]/g)]
-  for (const m of memoryMatches) {
-    await saveMemory(user.id, m[1].trim().toLowerCase(), m[2].trim())
-    reply = reply.replace(m[0], '').trim()
+  // Tareas completadas
+  for (const t of data.tareas_completadas ?? []) {
+    if (t.texto) {
+      await supabase.from('tasks').update({ done: true }).eq('user_id', user.id).ilike('text', `%${t.texto.trim()}%`)
+    }
+  }
+
+  // Contactos
+  for (const c of data.contactos ?? []) {
+    if (c.nombre) {
+      await supabase.from('contacts').insert({ user_id: user.id, name: c.nombre.trim(), info: c.info ?? '' })
+    }
   }
 
   await saveMessage(user.id, 'user', text)
