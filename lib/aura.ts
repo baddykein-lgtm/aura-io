@@ -67,8 +67,8 @@ Responde natural y cálido, máximo 3 líneas.`
   if (facturaPendiente) {
     const fp = JSON.parse(facturaPendiente)
     if (!memory['nif']) {
-      return `Eres Aura. El usuario quiere hacer una factura pero necesitas sus datos fiscales.
-Pregúntale su NIF/CIF y dirección fiscal de forma amable y breve. Máximo 2 líneas.`
+      return `Eres Aura. Estás generando una factura para ${fp.cliente}. 
+Necesitas los datos fiscales del usuario. Pídele su NIF/CIF y dirección fiscal de forma amable. Máximo 2 líneas.`
     }
     if (!fp.iva) {
       return `Eres Aura. Tienes una factura pendiente para ${fp.cliente} por ${fp.importe}€ de "${fp.concepto}".
@@ -83,8 +83,12 @@ FECHA Y HORA ACTUAL EN ESPAÑA: ${fechaHoy}, ${horaActual}
 MEMORIA PERMANENTE DEL USUARIO:
 ${mem}
 
-Responde natural y útil, máximo 4 líneas. Usa la memoria para personalizar tus respuestas.
-Si el usuario pide una factura, confirma que la estás preparando y que necesitas algunos datos.`
+CAPACIDADES QUE TIENES:
+- Recordatorios, agenda, tareas, contactos
+- FACTURAS: SIEMPRE puedes crear facturas. Si el usuario pide una factura responde exactamente: "¡Perfecto! Estoy generando tu factura ahora mismo 🧾" y añade qué datos necesitas si faltan.
+- NUNCA digas que no puedes hacer facturas. SIEMPRE las puedes hacer.
+
+Responde natural y útil, máximo 4 líneas.`
 }
 
 async function extractStructuredData(userText: string, auraReply: string, memory: Record<string, string>) {
@@ -113,14 +117,14 @@ Devuelve SIEMPRE este JSON:
 }
 
 REGLAS:
-- "memoria": datos personales duraderos. Claves en minúsculas sin espacios. Si el usuario da su NIF usa clave "nif". Si da dirección fiscal usa "direccion_fiscal".
+- "memoria": datos personales duraderos. Claves en minúsculas sin espacios. NIF usa clave "nif". Dirección fiscal usa "direccion_fiscal".
 - "recordatorios": cuando pide recordar algo. Fecha/hora en HORA ESPAÑA.
 - "agenda": citas con fecha y hora en HORA ESPAÑA.
 - "tareas_nuevas": pendientes sin hora.
 - "tareas_completadas": cuando dice que ya hizo algo.
 - "contactos": personas con info relevante.
-- "factura_nueva": si pide crear una factura nueva, pon {"cliente": "nombre", "concepto": "servicio", "importe": 50.00}. Si no, null.
-- "factura_datos": si hay una factura_pendiente en memoria Y el usuario responde con datos que faltan (NIF, dirección, o IVA como número ej: 21), pon {"tipo": "nif_direccion" o "iva", "valor": "dato proporcionado"}. Si no, null.
+- "factura_nueva": si pide crear una factura, pon {"cliente": "nombre", "concepto": "servicio", "importe": 50.00}. Si no, null.
+- "factura_datos": si hay factura_pendiente Y el usuario responde con NIF/dirección o IVA, pon {"tipo": "nif_direccion" o "iva", "valor": "dato"}. Si no, null.
 - "siguiente_paso_onboarding": solo si hay onboarding activo. Si no, null.
 - Arrays vacíos si no aplica.`
 
@@ -219,9 +223,16 @@ export async function respondAura(user: any, text: string) {
       iva: null
     })
     await saveMemory(user.id, 'factura_pendiente', facturaPendiente)
+
+    // Si ya tiene NIF y conocemos el IVA pedido, generamos directamente
+    const memActual = await getMemory(user.id)
+    if (memActual['nif'] && data.factura_nueva.iva != null) {
+      await generarYEnviarFactura(user.id, data.factura_nueva.cliente, data.factura_nueva.concepto, data.factura_nueva.importe, data.factura_nueva.iva, user.phone)
+      await supabase.from('memories').delete().eq('user_id', user.id).eq('key', 'factura_pendiente')
+    }
   }
 
-  // Datos de factura pendiente (NIF/dirección o IVA)
+  // Datos de factura pendiente (IVA)
   if (data.factura_datos && memory['factura_pendiente']) {
     const fp = JSON.parse(memory['factura_pendiente'])
 
@@ -229,7 +240,6 @@ export async function respondAura(user: any, text: string) {
       const ivaNum = parseFloat(String(data.factura_datos.valor).replace('%', ''))
       fp.iva = isNaN(ivaNum) ? 0 : ivaNum
 
-      // Si ya tenemos NIF, generamos la factura
       const memActual = await getMemory(user.id)
       if (memActual['nif']) {
         await generarYEnviarFactura(user.id, fp.cliente, fp.concepto, fp.importe, fp.iva, user.phone)
