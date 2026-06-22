@@ -34,20 +34,10 @@ async function generarYEnviarFactura(userId: string, clientName: string, concept
       body: JSON.stringify({ userId, clientName, concept, amount })
     })
 
-    if (!res.ok) return
-
-    const pdfBuffer = Buffer.from(await res.arrayBuffer())
-    const fileName = `factura-${userId}-${Date.now()}.pdf`
-
-    const { error } = await supabase.storage
-      .from('invoices')
-      .upload(fileName, pdfBuffer, { contentType: 'application/pdf', upsert: true })
-
-    if (error) { console.error('Error subiendo PDF:', error); return }
-
-    const { data: { publicUrl } } = supabase.storage.from('invoices').getPublicUrl(fileName)
-
-    await sendWhatsApp(phone, `🧾 Tu factura está lista! Descárgala aquí:\n${publicUrl}`)
+    const data = await res.json()
+    if (data.url) {
+      await sendWhatsApp(phone, `🧾 Factura ${data.invoiceNumber} lista!\nDescárgala aquí: ${data.url}`)
+    }
   } catch (e) {
     console.error('Error generando factura:', e)
   }
@@ -115,7 +105,7 @@ REGLAS:
 - "tareas_completadas": cuando dice que ya hizo algo.
 - "contactos": personas con info relevante.
 - "factura": Si el usuario pide generar una factura, pon: {"cliente": "nombre del cliente", "concepto": "descripción del servicio", "importe": 50.00}. Si no, pon null.
-- "siguiente_paso_onboarding": solo si hay onboarding activo, indica el siguiente paso (nombre/profesion/horario/prioridades/completado). Si no hay onboarding, pon null.
+- "siguiente_paso_onboarding": solo si hay onboarding activo, indica el siguiente paso. Si no hay onboarding, pon null.
 - Arrays vacíos si no aplica. Sé generoso extrayendo memoria.`
 
   try {
