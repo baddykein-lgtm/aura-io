@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { jsPDF } from 'jspdf'
 
 export async function POST(req: Request) {
-  const { userId, clientName, concept, amount, iva } = await req.json()
+  const { userId, clientName, clientNif, clientAddress, clientPostal, concept, amount, iva } = await req.json()
 
   if (!userId || !clientName || !concept || !amount) {
     return NextResponse.json({ error: 'Faltan datos' }, { status: 400 })
@@ -39,7 +39,7 @@ export async function POST(req: Request) {
   doc.setFontSize(10)
   doc.text(invoiceNumber, 105, 26, { align: 'center' })
 
-  // Datos emisor
+  // Datos emisor (izquierda)
   doc.setFontSize(11)
   doc.setTextColor(30, 30, 30)
   doc.text('EMISOR', 20, 50)
@@ -49,58 +49,62 @@ export async function POST(req: Request) {
   if (mem.profesion) doc.text(mem.profesion, 20, 63)
   if (mem.nif) doc.text(`NIF/CIF: ${mem.nif}`, 20, 69)
   if (mem.direccion_fiscal) doc.text(mem.direccion_fiscal, 20, 75)
+  if (mem.codigo_postal_fiscal) doc.text(mem.codigo_postal_fiscal, 20, 81)
 
-  // Datos cliente
+  // Fecha (derecha arriba)
+  doc.setFontSize(10)
+  doc.setTextColor(100, 100, 100)
+  doc.text('Fecha: ' + new Date().toLocaleDateString('es-ES'), 190, 43, { align: 'right' })
+
+  // Datos cliente (derecha)
   doc.setFontSize(11)
   doc.setTextColor(30, 30, 30)
   doc.text('CLIENTE', 120, 50)
   doc.setFontSize(10)
   doc.setTextColor(60, 60, 60)
   doc.text(clientName, 120, 57)
+  if (clientNif) doc.text(`NIF/DNI: ${clientNif}`, 120, 63)
+  if (clientAddress) doc.text(clientAddress, 120, 69)
+  if (clientPostal) doc.text(clientPostal, 120, 75)
 
-  // Fecha
-  doc.setFontSize(10)
-  doc.setTextColor(100, 100, 100)
-  doc.text('Fecha: ' + new Date().toLocaleDateString('es-ES'), 120, 75)
-
-  // Línea
+  // Línea separadora
   doc.setDrawColor(220, 220, 220)
-  doc.line(20, 85, 190, 85)
+  doc.line(20, 90, 190, 90)
 
   // Cabecera tabla
   doc.setFontSize(10)
   doc.setTextColor(127, 119, 221)
-  doc.text('CONCEPTO', 20, 94)
-  doc.text('BASE', 130, 94, { align: 'right' })
-  doc.text('IVA', 160, 94, { align: 'right' })
-  doc.text('TOTAL', 190, 94, { align: 'right' })
+  doc.text('CONCEPTO', 20, 99)
+  doc.text('BASE', 130, 99, { align: 'right' })
+  doc.text('IVA', 160, 99, { align: 'right' })
+  doc.text('TOTAL', 190, 99, { align: 'right' })
 
   doc.setDrawColor(200, 200, 200)
-  doc.line(20, 97, 190, 97)
+  doc.line(20, 102, 190, 102)
 
-  // Fila
+  // Fila concepto
   doc.setFontSize(10)
   doc.setTextColor(30, 30, 30)
-  doc.text(concept, 20, 106, { maxWidth: 100 })
-  doc.text(`${baseAmount.toFixed(2)} €`, 130, 106, { align: 'right' })
-  doc.text(`${ivaPercent}%`, 160, 106, { align: 'right' })
-  doc.text(`${total.toFixed(2)} €`, 190, 106, { align: 'right' })
+  doc.text(concept, 20, 111, { maxWidth: 100 })
+  doc.text(`${baseAmount.toFixed(2)} €`, 130, 111, { align: 'right' })
+  doc.text(`${ivaPercent}%`, 160, 111, { align: 'right' })
+  doc.text(`${total.toFixed(2)} €`, 190, 111, { align: 'right' })
 
-  doc.line(20, 112, 190, 112)
+  doc.line(20, 117, 190, 117)
 
   // Totales
   doc.setFontSize(10)
   doc.setTextColor(100, 100, 100)
-  doc.text(`Base imponible:`, 120, 122)
-  doc.text(`${baseAmount.toFixed(2)} €`, 190, 122, { align: 'right' })
-  doc.text(`IVA (${ivaPercent}%):`, 120, 130)
-  doc.text(`${ivaAmount.toFixed(2)} €`, 190, 130, { align: 'right' })
+  doc.text('Base imponible:', 120, 127)
+  doc.text(`${baseAmount.toFixed(2)} €`, 190, 127, { align: 'right' })
+  doc.text(`IVA (${ivaPercent}%):`, 120, 135)
+  doc.text(`${ivaAmount.toFixed(2)} €`, 190, 135, { align: 'right' })
 
   doc.setFillColor(127, 119, 221)
-  doc.rect(110, 136, 80, 12, 'F')
+  doc.rect(110, 141, 80, 12, 'F')
   doc.setFontSize(12)
   doc.setTextColor(255, 255, 255)
-  doc.text(`TOTAL: ${total.toFixed(2)} €`, 190, 144, { align: 'right' })
+  doc.text(`TOTAL: ${total.toFixed(2)} €`, 190, 149, { align: 'right' })
 
   // Footer
   doc.setFontSize(8)
@@ -120,6 +124,5 @@ export async function POST(req: Request) {
   }
 
   const { data: { publicUrl } } = supabase.storage.from('invoices').getPublicUrl(fileName)
-
   return NextResponse.json({ url: publicUrl, invoiceNumber })
 }
