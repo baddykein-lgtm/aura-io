@@ -26,7 +26,33 @@ function parseMadridToUTC(fechaHora: string): string {
   return date.toISOString()
 }
 
-// ── CONVERSACIÓN NATURAL ──────────────────────────────
+async function generarYEnviarFactura(userId: string, clientName: string, concept: string, amount: number, phone: string) {
+  try {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/invoice`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, clientName, concept, amount })
+    })
+
+    if (!res.ok) return
+
+    const pdfBuffer = Buffer.from(await res.arrayBuffer())
+    const fileName = `factura-${userId}-${Date.now()}.pdf`
+
+    const { error } = await supabase.storage
+      .from('invoices')
+      .upload(fileName, pdfBuffer, { contentType: 'application/pdf', upsert: true })
+
+    if (error) { console.error('Error subiendo PDF:', error); return }
+
+    const { data: { publicUrl } } = supabase.storage.from('invoices').getPublicUrl(fileName)
+
+    await sendWhatsApp(phone, `🧾 Tu factura está lista! Descárgala aquí:\n${publicUrl}`)
+  } catch (e) {
+    console.error('Error generando factura:', e)
+  }
+}
+
 function buildConversationPrompt(memory: Record<string, string>) {
   const mem = Object.entries(memory)
     .filter(([k]) => k !== 'onboarding_step')
@@ -42,10 +68,10 @@ LO QUE YA SABES: ${mem}
 
 - Si paso es "nombre": el usuario te acaba de decir su nombre. Salúdale y pregúntale a qué se dedica.
 - Si paso es "profesion": pregúntale su horario habitual de trabajo.
-- Si paso es "horario": pregúntale qué es lo más importante que quiere gestionar (agenda, clientes, tareas, recordatorios).
+- Si paso es "horario": pregúntale qué es lo más importante que quiere gestionar.
 - Si paso es "prioridades": dile que ya está todo listo y que puede pedirte lo que necesite.
 
-Responde de forma natural y cálida, máximo 3 líneas. NO uses corchetes ni formato técnico, solo conversa.`
+Responde de forma natural y cálida, máximo 3 líneas.`
   }
 
   return `Eres Aura, asistente personal de WhatsApp. Hablas en español, eres cercana, directa y cálida.
@@ -56,42 +82,41 @@ MEMORIA PERMANENTE DEL USUARIO:
 ${mem}
 
 Responde de forma natural y útil, máximo 4 líneas. Usa la memoria para personalizar tus respuestas.
-Si el usuario pregunta qué sabes de él, díselo basándote en la memoria de arriba.
-NO uses corchetes ni formato técnico — solo conversa de forma natural y cálida.`
+Si el usuario pide una factura, confirma que la estás generando. Si pregunta qué sabes de él, díselo.`
 }
 
-// ── EXTRACCIÓN ESTRUCTURADA (JSON mode, fiable) ──────
 async function extractStructuredData(userText: string, auraReply: string, memory: Record<string, string>) {
   const { fechaHoy, horaActual, yyyy, mm, dd, hh, min } = getMadridTimeInfo()
   const onboardingStep = memory['onboarding_step']
 
-  const systemPrompt = `Analizas un mensaje de WhatsApp entre un usuario y su asistente Aura. Tu única tarea es extraer datos estructurados que deben guardarse, en JSON.
+  const systemPrompt = `Analizas mensajes entre un usuario y su asistente Aura. Extrae datos estructurados en JSON.
 
 FECHA Y HORA ACTUAL EN ESPAÑA: ${fechaHoy}, ${horaActual}
 HORA ISO MADRID: ${yyyy}-${mm}-${dd}T${hh}:${min}
 PASO DE ONBOARDING ACTUAL: ${onboardingStep ?? 'ninguno'}
 
-Devuelve SIEMPRE un JSON con esta forma exacta (usa arrays vacíos si no aplica):
+Devuelve SIEMPRE este JSON exacto:
 {
   "memoria": [{"clave": "nombre", "valor": "Carlos"}],
   "recordatorios": [{"texto": "Llamar al médico", "fecha_hora": "YYYY-MM-DD HH:MM"}],
-  "agenda": [{"titulo": "Reunión cliente", "fecha_hora": "YYYY-MM-DD HH:MM", "notas": "opcional o null"}],
+  "agenda": [{"titulo": "Reunión cliente", "fecha_hora": "YYYY-MM-DD HH:MM", "notas": null}],
   "tareas_nuevas": [{"texto": "Comprar material"}],
-  "tareas_completadas": [{"texto": "texto que coincida con una tarea existente"}],
-  "contactos": [{"nombre": "María García", "info": "Clienta, alergia ibuprofeno"}],
-  "siguiente_paso_onboarding": "nombre|profesion|horario|prioridades|completado|null"
+  "tareas_completadas": [{"texto": "texto tarea existente"}],
+  "contactos": [{"nombre": "María García", "info": "Clienta, martes"}],
+  "factura": null,
+  "siguiente_paso_onboarding": null
 }
 
-REGLAS DE EXTRACCIÓN:
-- "memoria": cualquier dato personal duradero que el usuario comparta (nombre, profesión, ciudad, gustos, horarios habituales, cumpleaños, alergias propias, etc). Claves en minúsculas sin espacios.
-- "recordatorios": SIEMPRE que el usuario pida que le recuerden algo a una hora/fecha. Calcula fecha_hora en HORA DE ESPAÑA (no UTC) sumando/restando desde la hora actual de arriba. Si dice "en X minutos/horas", suma a la hora actual. Si dice "mañana a las X", usa el día siguiente.
-- "agenda": citas, reuniones o eventos con fecha/hora específica.
-- "tareas_nuevas": cosas pendientes SIN hora específica ("apúntame que...", "tengo que...").
-- "tareas_completadas": cuando el usuario dice que ya hizo algo que estaba pendiente.
-- "contactos": personas mencionadas con información relevante de seguir (clientes, proveedores, etc).
-- "siguiente_paso_onboarding": SOLO rellena esto si PASO DE ONBOARDING ACTUAL no es null. Indica a qué paso pasar después de esta respuesta del usuario, basándote en lo que Aura ya respondió.
-- Si no hay nada que extraer en una categoría, deja el array vacío.
-- Sé generoso extrayendo memoria — cualquier dato personal compartido cuenta, no solo si lo pide explícitamente.`
+REGLAS:
+- "memoria": datos personales duraderos (nombre, profesión, ciudad, gustos, horarios, cumpleaños). Claves en minúsculas.
+- "recordatorios": cuando pide que le recuerden algo. Calcula fecha_hora en HORA DE ESPAÑA sumando desde ahora.
+- "agenda": citas/reuniones con fecha y hora. Fecha en hora de España.
+- "tareas_nuevas": cosas pendientes sin hora.
+- "tareas_completadas": cuando dice que ya hizo algo.
+- "contactos": personas con info relevante.
+- "factura": Si el usuario pide generar una factura, pon: {"cliente": "nombre del cliente", "concepto": "descripción del servicio", "importe": 50.00}. Si no, pon null.
+- "siguiente_paso_onboarding": solo si hay onboarding activo, indica el siguiente paso (nombre/profesion/horario/prioridades/completado). Si no hay onboarding, pon null.
+- Arrays vacíos si no aplica. Sé generoso extrayendo memoria.`
 
   try {
     const completion = await openai.chat.completions.create({
@@ -100,12 +125,12 @@ REGLAS DE EXTRACCIÓN:
       max_tokens: 600,
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: `MENSAJE DEL USUARIO: "${userText}"\n\nRESPUESTA DE AURA: "${auraReply}"` }
+        { role: 'user', content: `MENSAJE DEL USUARIO: "${userText}"\nRESPUESTA DE AURA: "${auraReply}"` }
       ]
     })
     return JSON.parse(completion.choices[0].message.content ?? '{}')
   } catch (e) {
-    console.error('Error extrayendo datos estructurados:', e)
+    console.error('Error extrayendo datos:', e)
     return {}
   }
 }
@@ -115,7 +140,6 @@ export async function respondAura(user: any, text: string) {
     getMemory(user.id), getHistory(user.id)
   ])
 
-  // 1. Respuesta conversacional natural
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o',
     max_tokens: 300,
@@ -128,10 +152,9 @@ export async function respondAura(user: any, text: string) {
 
   const reply = completion.choices[0].message.content ?? 'Lo gestiono ahora!'
 
-  // 2. Extracción estructurada fiable (JSON mode)
   const data = await extractStructuredData(text, reply, memory)
 
-  // Guardar memoria
+  // Memoria
   for (const item of data.memoria ?? []) {
     if (item.clave && item.valor) {
       await saveMemory(user.id, String(item.clave).toLowerCase().trim(), String(item.valor).trim())
@@ -169,25 +192,22 @@ export async function respondAura(user: any, text: string) {
     }
   }
 
-  // Tareas nuevas
+  // Tareas
   for (const t of data.tareas_nuevas ?? []) {
-    if (t.texto) {
-      await supabase.from('tasks').insert({ user_id: user.id, text: t.texto.trim(), done: false })
-    }
+    if (t.texto) await supabase.from('tasks').insert({ user_id: user.id, text: t.texto.trim(), done: false })
   }
-
-  // Tareas completadas
   for (const t of data.tareas_completadas ?? []) {
-    if (t.texto) {
-      await supabase.from('tasks').update({ done: true }).eq('user_id', user.id).ilike('text', `%${t.texto.trim()}%`)
-    }
+    if (t.texto) await supabase.from('tasks').update({ done: true }).eq('user_id', user.id).ilike('text', `%${t.texto.trim()}%`)
   }
 
   // Contactos
   for (const c of data.contactos ?? []) {
-    if (c.nombre) {
-      await supabase.from('contacts').insert({ user_id: user.id, name: c.nombre.trim(), info: c.info ?? '' })
-    }
+    if (c.nombre) await supabase.from('contacts').insert({ user_id: user.id, name: c.nombre.trim(), info: c.info ?? '' })
+  }
+
+  // Facturas
+  if (data.factura && data.factura.cliente && data.factura.concepto && data.factura.importe) {
+    await generarYEnviarFactura(user.id, data.factura.cliente, data.factura.concepto, data.factura.importe, user.phone)
   }
 
   await saveMessage(user.id, 'user', text)
