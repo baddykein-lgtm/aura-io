@@ -42,12 +42,10 @@ async function generarYEnviarFactura(userId: string, clientName: string, concept
   }
 }
 
-// Detecta si el mensaje es sobre facturas
 function esIntentFactura(text: string): boolean {
-  return /factura|invoice|factur/i.test(text)
+  return /factura|invoice/i.test(text)
 }
 
-// Detecta si el mensaje es una respuesta de IVA
 function extraerIVA(text: string): number | null {
   const match = text.match(/(\d+)\s*%?/)
   if (match) {
@@ -86,7 +84,15 @@ FECHA Y HORA ACTUAL EN ESPAÑA: ${fechaHoy}, ${horaActual}
 MEMORIA PERMANENTE DEL USUARIO:
 ${mem}
 
-Responde natural y útil, máximo 4 líneas. Usa la memoria para personalizar tus respuestas.`
+CAPACIDADES QUE TIENES (todas funcionan al 100%, nunca digas que no puedes):
+- RECORDATORIOS AUTOMÁTICOS: cuando alguien pide "recuérdame X a las Y" o "avísame en X minutos", confirma con algo como "¡Anotado! Te recuerdo a las HH:MM 💜" — el sistema lo enviará automáticamente.
+- AGENDA: crear citas y eventos. Cuando alguien dice "tengo reunión el viernes a las 10", confirma que lo has apuntado.
+- TAREAS: apuntar pendientes y marcarlos como hechos.
+- CONTACTOS: guardar datos de personas importantes.
+- FACTURAS: generar PDFs profesionales con IVA.
+- GOOGLE CALENDAR: los eventos se crean automáticamente en el calendario real.
+
+Responde siempre de forma positiva confirmando lo que has hecho. Máximo 4 líneas.`
 }
 
 async function extractStructuredData(userText: string, auraReply: string, memory: Record<string, string>) {
@@ -114,14 +120,14 @@ Devuelve SIEMPRE este JSON:
 
 REGLAS:
 - "memoria": datos personales duraderos. Claves en minúsculas. NIF usa "nif". Dirección usa "direccion_fiscal".
-- "recordatorios": cuando pide recordar algo. Fecha/hora en HORA ESPAÑA.
-- "agenda": citas con fecha y hora en HORA ESPAÑA.
-- "tareas_nuevas": pendientes sin hora.
+- "recordatorios": SIEMPRE que el usuario pida ser recordado de algo. Calcula fecha_hora en HORA DE ESPAÑA sumando a la hora actual. "en X minutos" = hora actual + X minutos. "a las HH:MM" = esa hora de hoy o mañana.
+- "agenda": citas/reuniones con fecha y hora en HORA ESPAÑA. "el viernes" = próximo viernes.
+- "tareas_nuevas": pendientes sin hora específica.
 - "tareas_completadas": cuando dice que ya hizo algo.
 - "contactos": personas con info relevante.
-- "factura_info": si pide factura extrae {"cliente": "nombre", "concepto": "servicio", "importe": 50.00}. Si no, null.
+- "factura_info": si pide factura, {"cliente": "nombre", "concepto": "servicio", "importe": 50.00}. Si no, null.
 - "siguiente_paso_onboarding": solo si hay onboarding activo. Si no, null.
-- Arrays vacíos si no aplica.`
+- Arrays vacíos si no aplica. Sé muy generoso extrayendo recordatorios y memoria.`
 
   try {
     const completion = await openai.chat.completions.create({
@@ -145,14 +151,12 @@ export async function respondAura(user: any, text: string) {
     getMemory(user.id), getHistory(user.id)
   ])
 
-  // ── FLUJO ESPECIAL: FACTURAS ─────────────────────────
   const facturaPendiente = memory['factura_pendiente']
 
-  // Si hay factura pendiente esperando IVA
+  // ── FLUJO FACTURAS: respuesta IVA pendiente ──────────
   if (facturaPendiente) {
     const fp = JSON.parse(facturaPendiente)
     const iva = extraerIVA(text)
-
     if (iva !== null) {
       await sendWhatsApp(user.phone, '🧾 Generando tu factura...')
       await generarYEnviarFactura(user.id, fp.cliente, fp.concepto, fp.importe, iva, user.phone)
@@ -163,15 +167,13 @@ export async function respondAura(user: any, text: string) {
     }
   }
 
-  // Si pide una factura nueva
+  // ── FLUJO FACTURAS: nueva petición ──────────────────
   if (esIntentFactura(text)) {
-    // Extraer datos de la factura del mensaje
     const extraccion = await extractStructuredData(text, '', memory)
     const fi = extraccion.factura_info
 
     if (fi && fi.cliente && fi.concepto && fi.importe) {
       if (!memory['nif']) {
-        // Pedir NIF primero — guardar factura pendiente
         await saveMemory(user.id, 'factura_pendiente', JSON.stringify({ ...fi, iva: null, esperando: 'nif' }))
         const msg = `¡Perfecto! Para generar la factura a ${fi.cliente} necesito tu NIF/CIF y dirección fiscal 📋`
         await sendWhatsApp(user.phone, msg)
@@ -179,8 +181,6 @@ export async function respondAura(user: any, text: string) {
         await saveMessage(user.id, 'assistant', msg)
         return
       }
-
-      // Tiene NIF — pedir IVA
       await saveMemory(user.id, 'factura_pendiente', JSON.stringify({ ...fi, iva: null }))
       const msg = `¡Perfecto! Factura a ${fi.cliente} por ${fi.importe}€ de "${fi.concepto}" 🧾\n¿Qué IVA aplico? 21%, 10%, 4% o exento (0%)`
       await sendWhatsApp(user.phone, msg)
@@ -211,7 +211,7 @@ export async function respondAura(user: any, text: string) {
     }
   }
 
-  // Si dio NIF y hay factura pendiente esperando
+  // Si dio NIF y hay factura pendiente
   if (data.memoria?.some((m: any) => m.clave === 'nif') && facturaPendiente) {
     const fp = JSON.parse(facturaPendiente)
     const msg = `Perfecto, NIF guardado ✅\n¿Qué IVA aplico para la factura a ${fp.cliente}? 21%, 10%, 4% o exento (0%)`
