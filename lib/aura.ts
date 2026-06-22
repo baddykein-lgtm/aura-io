@@ -26,14 +26,13 @@ function parseMadridToUTC(fechaHora: string): string {
   return date.toISOString()
 }
 
-async function generarYEnviarFactura(userId: string, clientName: string, concept: string, amount: number, phone: string) {
+async function generarYEnviarFactura(userId: string, clientName: string, concept: string, amount: number, iva: number, phone: string) {
   try {
     const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/invoice`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, clientName, concept, amount })
+      body: JSON.stringify({ userId, clientName, concept, amount, iva })
     })
-
     const data = await res.json()
     if (data.url) {
       await sendWhatsApp(phone, `🧾 Factura ${data.invoiceNumber} lista!\nDescárgala aquí: ${data.url}`)
@@ -45,23 +44,36 @@ async function generarYEnviarFactura(userId: string, clientName: string, concept
 
 function buildConversationPrompt(memory: Record<string, string>) {
   const mem = Object.entries(memory)
-    .filter(([k]) => k !== 'onboarding_step')
+    .filter(([k]) => k !== 'onboarding_step' && k !== 'factura_pendiente')
     .map(([k, v]) => `- ${k}: ${v}`).join('\n') || 'Aún no sé nada de este usuario'
 
   const { fechaHoy, horaActual } = getMadridTimeInfo()
   const onboardingStep = memory['onboarding_step']
+  const facturaPendiente = memory['factura_pendiente']
 
   if (onboardingStep && onboardingStep !== 'completado') {
     return `Eres Aura, asistente personal de WhatsApp. Hablas en español, eres cercana y cálida.
 Estás conociendo a un nuevo usuario. PASO ACTUAL DEL ONBOARDING: ${onboardingStep}
 LO QUE YA SABES: ${mem}
 
-- Si paso es "nombre": el usuario te acaba de decir su nombre. Salúdale y pregúntale a qué se dedica.
-- Si paso es "profesion": pregúntale su horario habitual de trabajo.
-- Si paso es "horario": pregúntale qué es lo más importante que quiere gestionar.
-- Si paso es "prioridades": dile que ya está todo listo y que puede pedirte lo que necesite.
+- Si paso es "nombre": salúdale por su nombre y pregúntale a qué se dedica.
+- Si paso es "profesion": pregúntale su horario habitual.
+- Si paso es "horario": pregúntale qué quiere gestionar.
+- Si paso es "prioridades": dile que está listo y puede pedirte lo que necesite.
 
-Responde de forma natural y cálida, máximo 3 líneas.`
+Responde natural y cálido, máximo 3 líneas.`
+  }
+
+  if (facturaPendiente) {
+    const fp = JSON.parse(facturaPendiente)
+    if (!memory['nif']) {
+      return `Eres Aura. El usuario quiere hacer una factura pero necesitas sus datos fiscales.
+Pregúntale su NIF/CIF y dirección fiscal de forma amable y breve. Máximo 2 líneas.`
+    }
+    if (!fp.iva) {
+      return `Eres Aura. Tienes una factura pendiente para ${fp.cliente} por ${fp.importe}€ de "${fp.concepto}".
+Pregúntale qué IVA quiere aplicar: 21%, 10%, 4% o exento (0%). Máximo 2 líneas.`
+    }
   }
 
   return `Eres Aura, asistente personal de WhatsApp. Hablas en español, eres cercana, directa y cálida.
@@ -71,8 +83,8 @@ FECHA Y HORA ACTUAL EN ESPAÑA: ${fechaHoy}, ${horaActual}
 MEMORIA PERMANENTE DEL USUARIO:
 ${mem}
 
-Responde de forma natural y útil, máximo 4 líneas. Usa la memoria para personalizar tus respuestas.
-Si el usuario pide una factura, confirma que la estás generando. Si pregunta qué sabes de él, díselo.`
+Responde natural y útil, máximo 4 líneas. Usa la memoria para personalizar tus respuestas.
+Si el usuario pide una factura, confirma que la estás preparando y que necesitas algunos datos.`
 }
 
 async function extractStructuredData(userText: string, auraReply: string, memory: Record<string, string>) {
@@ -81,32 +93,36 @@ async function extractStructuredData(userText: string, auraReply: string, memory
 
   const systemPrompt = `Analizas mensajes entre un usuario y su asistente Aura. Extrae datos estructurados en JSON.
 
-FECHA Y HORA ACTUAL EN ESPAÑA: ${fechaHoy}, ${horaActual}
+FECHA Y HORA EN ESPAÑA: ${fechaHoy}, ${horaActual}
 HORA ISO MADRID: ${yyyy}-${mm}-${dd}T${hh}:${min}
-PASO DE ONBOARDING ACTUAL: ${onboardingStep ?? 'ninguno'}
+PASO ONBOARDING: ${onboardingStep ?? 'ninguno'}
+FACTURA PENDIENTE: ${memory['factura_pendiente'] ?? 'ninguna'}
+MEMORIA ACTUAL: ${Object.entries(memory).map(([k,v])=>`${k}:${v}`).join(', ')}
 
-Devuelve SIEMPRE este JSON exacto:
+Devuelve SIEMPRE este JSON:
 {
   "memoria": [{"clave": "nombre", "valor": "Carlos"}],
-  "recordatorios": [{"texto": "Llamar al médico", "fecha_hora": "YYYY-MM-DD HH:MM"}],
-  "agenda": [{"titulo": "Reunión cliente", "fecha_hora": "YYYY-MM-DD HH:MM", "notas": null}],
-  "tareas_nuevas": [{"texto": "Comprar material"}],
-  "tareas_completadas": [{"texto": "texto tarea existente"}],
-  "contactos": [{"nombre": "María García", "info": "Clienta, martes"}],
-  "factura": null,
+  "recordatorios": [{"texto": "texto", "fecha_hora": "YYYY-MM-DD HH:MM"}],
+  "agenda": [{"titulo": "titulo", "fecha_hora": "YYYY-MM-DD HH:MM", "notas": null}],
+  "tareas_nuevas": [{"texto": "texto"}],
+  "tareas_completadas": [{"texto": "texto"}],
+  "contactos": [{"nombre": "nombre", "info": "info"}],
+  "factura_nueva": null,
+  "factura_datos": null,
   "siguiente_paso_onboarding": null
 }
 
 REGLAS:
-- "memoria": datos personales duraderos (nombre, profesión, ciudad, gustos, horarios, cumpleaños). Claves en minúsculas.
-- "recordatorios": cuando pide que le recuerden algo. Calcula fecha_hora en HORA DE ESPAÑA sumando desde ahora.
-- "agenda": citas/reuniones con fecha y hora. Fecha en hora de España.
-- "tareas_nuevas": cosas pendientes sin hora.
+- "memoria": datos personales duraderos. Claves en minúsculas sin espacios. Si el usuario da su NIF usa clave "nif". Si da dirección fiscal usa "direccion_fiscal".
+- "recordatorios": cuando pide recordar algo. Fecha/hora en HORA ESPAÑA.
+- "agenda": citas con fecha y hora en HORA ESPAÑA.
+- "tareas_nuevas": pendientes sin hora.
 - "tareas_completadas": cuando dice que ya hizo algo.
 - "contactos": personas con info relevante.
-- "factura": Si el usuario pide generar una factura, pon: {"cliente": "nombre del cliente", "concepto": "descripción del servicio", "importe": 50.00}. Si no, pon null.
-- "siguiente_paso_onboarding": solo si hay onboarding activo, indica el siguiente paso. Si no hay onboarding, pon null.
-- Arrays vacíos si no aplica. Sé generoso extrayendo memoria.`
+- "factura_nueva": si pide crear una factura nueva, pon {"cliente": "nombre", "concepto": "servicio", "importe": 50.00}. Si no, null.
+- "factura_datos": si hay una factura_pendiente en memoria Y el usuario responde con datos que faltan (NIF, dirección, o IVA como número ej: 21), pon {"tipo": "nif_direccion" o "iva", "valor": "dato proporcionado"}. Si no, null.
+- "siguiente_paso_onboarding": solo si hay onboarding activo. Si no, null.
+- Arrays vacíos si no aplica.`
 
   try {
     const completion = await openai.chat.completions.create({
@@ -115,7 +131,7 @@ REGLAS:
       max_tokens: 600,
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: `MENSAJE DEL USUARIO: "${userText}"\nRESPUESTA DE AURA: "${auraReply}"` }
+        { role: 'user', content: `MENSAJE: "${userText}"\nRESPUESTA AURA: "${auraReply}"` }
       ]
     })
     return JSON.parse(completion.choices[0].message.content ?? '{}')
@@ -141,7 +157,6 @@ export async function respondAura(user: any, text: string) {
   })
 
   const reply = completion.choices[0].message.content ?? 'Lo gestiono ahora!'
-
   const data = await extractStructuredData(text, reply, memory)
 
   // Memoria
@@ -195,9 +210,34 @@ export async function respondAura(user: any, text: string) {
     if (c.nombre) await supabase.from('contacts').insert({ user_id: user.id, name: c.nombre.trim(), info: c.info ?? '' })
   }
 
-  // Facturas
-  if (data.factura && data.factura.cliente && data.factura.concepto && data.factura.importe) {
-    await generarYEnviarFactura(user.id, data.factura.cliente, data.factura.concepto, data.factura.importe, user.phone)
+  // Factura nueva — guardar como pendiente
+  if (data.factura_nueva && data.factura_nueva.cliente) {
+    const facturaPendiente = JSON.stringify({
+      cliente: data.factura_nueva.cliente,
+      concepto: data.factura_nueva.concepto,
+      importe: data.factura_nueva.importe,
+      iva: null
+    })
+    await saveMemory(user.id, 'factura_pendiente', facturaPendiente)
+  }
+
+  // Datos de factura pendiente (NIF/dirección o IVA)
+  if (data.factura_datos && memory['factura_pendiente']) {
+    const fp = JSON.parse(memory['factura_pendiente'])
+
+    if (data.factura_datos.tipo === 'iva') {
+      const ivaNum = parseFloat(String(data.factura_datos.valor).replace('%', ''))
+      fp.iva = isNaN(ivaNum) ? 0 : ivaNum
+
+      // Si ya tenemos NIF, generamos la factura
+      const memActual = await getMemory(user.id)
+      if (memActual['nif']) {
+        await generarYEnviarFactura(user.id, fp.cliente, fp.concepto, fp.importe, fp.iva, user.phone)
+        await supabase.from('memories').delete().eq('user_id', user.id).eq('key', 'factura_pendiente')
+      } else {
+        await saveMemory(user.id, 'factura_pendiente', JSON.stringify(fp))
+      }
+    }
   }
 
   await saveMessage(user.id, 'user', text)
