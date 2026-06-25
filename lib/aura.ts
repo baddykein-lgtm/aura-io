@@ -93,15 +93,16 @@ FECHA Y HORA ACTUAL EN ESPAÑA: ${fechaHoy}, ${horaActual}
 MEMORIA PERMANENTE DEL USUARIO:
 ${mem}
 
-CAPACIDADES QUE TIENES (todas funcionan al 100%, nunca digas que no puedes):
-- RECORDATORIOS AUTOMÁTICOS: cuando alguien pide "recuérdame X a las Y", confirma con "¡Anotado! Te recuerdo a las HH:MM 💜"
-- AGENDA: crear citas y eventos. Confirma cuando lo apuntas.
+CAPACIDADES QUE TIENES (TODAS FUNCIONAN AL 100% — NUNCA DIGAS QUE NO PUEDES):
+- RECORDATORIOS AUTOMÁTICOS: cuando piden "recuérdame X a las Y" o "avísame en X minutos", confirma con "¡Anotado! Te recuerdo a las HH:MM 💜". El sistema lo enviará automáticamente.
+- AGENDA Y GOOGLE CALENDAR: cuando dicen "tengo una reunión/cita el X a las Y", responde "¡Anotado en tu calendario! 📅". El evento se crea automáticamente en Google Calendar. NUNCA digas que no tienes acceso a Google Calendar.
 - TAREAS: apuntar pendientes y marcarlos como hechos.
 - CONTACTOS: guardar datos de personas importantes.
 - FACTURAS: generar PDFs profesionales con IVA y datos completos.
-- GOOGLE CALENDAR: los eventos se crean automáticamente.
 
-Responde siempre positivo confirmando lo que haces. Máximo 4 líneas.`
+REGLA MÁS IMPORTANTE: NUNCA digas que no puedes hacer algo de la lista de arriba. Siempre confirma que lo estás haciendo.
+
+Responde siempre positivo y confirmando lo que haces. Máximo 4 líneas.`
 }
 
 async function extractStructuredData(userText: string, auraReply: string, memory: Record<string, string>) {
@@ -132,14 +133,14 @@ Devuelve SIEMPRE este JSON:
 REGLAS:
 - "memoria": datos personales duraderos. Claves en minúsculas. NIF usa "nif". Dirección usa "direccion_fiscal".
 - "recordatorios": SIEMPRE que pida ser recordado. Fecha/hora en HORA ESPAÑA.
-- "agenda": citas con fecha y hora en HORA ESPAÑA.
+- "agenda": citas/reuniones con fecha y hora. "mañana" = día siguiente. "el lunes/martes/..." = próximo día de esa semana. Fecha en HORA ESPAÑA.
 - "tareas_nuevas": pendientes sin hora.
 - "tareas_completadas": cuando dice que ya hizo algo.
 - "contactos": personas con info relevante.
-- "factura_info": si pide factura nueva, {"cliente": "nombre", "concepto": "servicio", "importe": 50.00}. Si no, null.
-- "datos_cliente_factura": si hay FACTURA PENDIENTE y el usuario proporciona datos del cliente (NIF/DNI, dirección, código postal), extráelos: {"nif": "12345678A", "direccion": "Calle Mayor 1", "postal": "28001"}. Si no, null.
+- "factura_info": si pide factura, {"cliente": "nombre", "concepto": "servicio", "importe": 50.00}. Si no, null.
+- "datos_cliente_factura": si hay factura pendiente y el usuario da NIF/dirección/postal del cliente, {"nif": "...", "direccion": "...", "postal": "..."}. Si no, null.
 - "siguiente_paso_onboarding": solo si hay onboarding activo. Si no, null.
-- Arrays vacíos si no aplica.`
+- Arrays vacíos si no aplica. Sé muy generoso extrayendo agenda y recordatorios.`
 
   try {
     const completion = await openai.chat.completions.create({
@@ -165,15 +166,13 @@ export async function respondAura(user: any, text: string) {
 
   const facturaPendiente = memory['factura_pendiente']
 
-  // ── FLUJO FACTURAS: respuesta IVA ────────────────────
+  // ── FLUJO FACTURAS: respuesta datos cliente ──────────
   if (facturaPendiente) {
     const fp = JSON.parse(facturaPendiente)
 
-    // Si esperamos datos del cliente
     if (fp.esperando === 'datos_cliente') {
       const data = await extractStructuredData(text, '', memory)
       const dc = data.datos_cliente_factura
-
       if (dc) {
         fp.cliente_nif = dc.nif ?? ''
         fp.cliente_direccion = dc.direccion ?? ''
@@ -188,7 +187,6 @@ export async function respondAura(user: any, text: string) {
       }
     }
 
-    // Si esperamos IVA
     if (fp.esperando === 'iva') {
       const iva = extraerIVA(text)
       if (iva !== null) {
@@ -202,7 +200,6 @@ export async function respondAura(user: any, text: string) {
       }
     }
 
-    // Compatibilidad: si no hay estado esperando pero llega un IVA
     const iva = extraerIVA(text)
     if (iva !== null && !fp.esperando) {
       fp.iva = iva
@@ -230,7 +227,6 @@ export async function respondAura(user: any, text: string) {
         return
       }
 
-      // Tiene NIF emisor — pedir datos cliente
       await saveMemory(user.id, 'factura_pendiente', JSON.stringify({ ...fi, iva: null, esperando: 'datos_cliente' }))
       const msg = `¡Perfecto! Factura a ${fi.cliente} por ${fi.importe}€ 🧾\n¿Cuál es el NIF/DNI de ${fi.cliente}, su dirección y código postal?`
       await sendWhatsApp(user.phone, msg)
@@ -261,7 +257,7 @@ export async function respondAura(user: any, text: string) {
     }
   }
 
-  // Si dio NIF emisor y hay factura pendiente esperando NIF
+  // Si dio NIF emisor y hay factura pendiente
   if (data.memoria?.some((m: any) => m.clave === 'nif') && facturaPendiente) {
     const fp = JSON.parse(facturaPendiente)
     if (fp.esperando === 'nif_emisor') {
