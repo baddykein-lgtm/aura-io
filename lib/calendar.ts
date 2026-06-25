@@ -13,7 +13,10 @@ export async function createCalendarEvent(
       .eq('id', userId)
       .single()
 
-    if (!user?.google_access_token) return null
+    if (!user?.google_access_token) {
+      console.log('Calendar: no hay access token para usuario', userId)
+      return null
+    }
 
     const event = {
       summary: title,
@@ -21,6 +24,8 @@ export async function createCalendarEvent(
       start: { dateTime: startsAt, timeZone: 'Europe/Madrid' },
       end: { dateTime: new Date(new Date(startsAt).getTime() + 60 * 60 * 1000).toISOString(), timeZone: 'Europe/Madrid' }
     }
+
+    console.log('Calendar: creando evento', title, startsAt)
 
     const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
       method: 'POST',
@@ -31,8 +36,10 @@ export async function createCalendarEvent(
       body: JSON.stringify(event)
     })
 
+    console.log('Calendar: respuesta Google status', res.status)
+
     if (res.status === 401) {
-      // Token expirado — refrescar
+      console.log('Calendar: token expirado, refrescando...')
       const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -44,6 +51,8 @@ export async function createCalendarEvent(
         })
       })
       const newTokens = await refreshRes.json()
+      console.log('Calendar: nuevo token obtenido', !!newTokens.access_token)
+      
       await supabase.from('users').update({ google_access_token: newTokens.access_token }).eq('id', userId)
 
       const retryRes = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
@@ -54,10 +63,14 @@ export async function createCalendarEvent(
         },
         body: JSON.stringify(event)
       })
-      return await retryRes.json()
+      const retryData = await retryRes.json()
+      console.log('Calendar: retry resultado', retryData.id ?? retryData.error)
+      return retryData
     }
 
-    return await res.json()
+    const data = await res.json()
+    console.log('Calendar: resultado', data.id ?? data.error)
+    return data
   } catch (e) {
     console.error('Error Google Calendar:', e)
     return null
