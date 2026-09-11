@@ -1,206 +1,343 @@
 'use client'
+import { useState } from 'react'
+
+const plans = [
+  {
+    name: 'Personal',
+    price: '9,99',
+    desc: 'Para profesionales que quieren organizarse mejor',
+    color: '#7F77DD',
+    features: [
+      'Aura en WhatsApp 24/7',
+      'Memoria permanente',
+      'Recordatorios automáticos',
+      'Agenda + Google Calendar',
+      'Tareas y contactos',
+      'Facturas básicas en PDF',
+      'Buenos días diarios',
+      '500 mensajes/mes',
+    ],
+  },
+  {
+    name: 'Pro',
+    price: '19,99',
+    desc: 'Para negocios: hoteles, clínicas, restaurantes',
+    color: '#A89EFF',
+    popular: true,
+    features: [
+      'Todo lo de Personal',
+      'Mensajes ilimitados',
+      'Hasta 5 usuarios',
+      'Respuesta automática a clientes 24/7',
+      'Flujos personalizados',
+      'Facturas completas con IVA',
+      'Panel de administración',
+      'Gmail integrado',
+      'WhatsApp número propio',
+      'CRM de clientes',
+    ],
+  },
+  {
+    name: 'Premium',
+    price: '49,99',
+    desc: 'Para negocios que quieren automatización total',
+    color: '#C084FC',
+    features: [
+      'Todo lo de Pro',
+      'Hasta 15 usuarios',
+      'Flujos ilimitados',
+      'Analytics y reportes',
+      'Integraciones avanzadas',
+      'Aura multiidioma',
+      'Soporte prioritario',
+    ],
+  },
+  {
+    name: 'Enterprise',
+    price: '99,99',
+    desc: 'Para grandes empresas y cadenas',
+    color: '#E879F9',
+    features: [
+      'Todo lo de Premium',
+      'Usuarios ilimitados',
+      'Onboarding personalizado',
+      'Integraciones a medida',
+      'Account manager dedicado',
+      'SLA garantizado',
+      'WhatsApp API directa',
+      'Formación del equipo',
+    ],
+  },
+]
+
+const chatMessages = [
+  { from: 'user', text: 'Recuérdame llamar a María mañana a las 10:00' },
+  { from: 'aura', text: '¡Anotado! Te recuerdo mañana a las 10:00 💜' },
+  { from: 'user', text: 'Hazme una factura a Juan López por 150€ de consultoría' },
+  { from: 'aura', text: '¡Perfecto! ¿Cuál es el NIF de Juan y su dirección? 🧾' },
+  { from: 'user', text: 'Tengo reunión el viernes a las 16:00' },
+  { from: 'aura', text: '¡Anotado en tu Google Calendar! 📅 Reunión el viernes a las 16:00' },
+]
 
 export default function Home() {
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    const form = e.target as HTMLFormElement
-    const email = (form.elements.namedItem('email') as HTMLInputElement).value
-    const r = await fetch('/api/checkout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email })
-    })
-    const d = await r.json()
-    if (d.url) window.location.href = d.url
+  const [email, setEmail] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [selectedPlan, setSelectedPlan] = useState(1)
+
+  const handleSubmit = async (planIndex: number) => {
+    if (!email) return
+    setLoading(true)
+    try {
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+      const data = await res.json()
+      if (data.url) window.location.href = data.url
+    } catch (e) {
+      console.error(e)
+    }
+    setLoading(false)
   }
 
   return (
-    <main style={{fontFamily:'system-ui,sans-serif',color:'#1a1a1a',margin:0,padding:0}}>
+    <main style={{ background: '#0A0A0F', minHeight: '100vh', color: '#F0EFF8', fontFamily: "'Inter', system-ui, sans-serif" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        ::selection { background: #7F77DD33; }
+        .glow { box-shadow: 0 0 60px #7F77DD22; }
+        .chat-bubble-user {
+          background: #7F77DD;
+          color: white;
+          padding: 10px 16px;
+          border-radius: 18px 18px 4px 18px;
+          max-width: 80%;
+          align-self: flex-end;
+          font-size: 14px;
+          line-height: 1.5;
+        }
+        .chat-bubble-aura {
+          background: #1A1A2E;
+          color: #F0EFF8;
+          padding: 10px 16px;
+          border-radius: 18px 18px 18px 4px;
+          max-width: 80%;
+          align-self: flex-start;
+          font-size: 14px;
+          line-height: 1.5;
+          border: 1px solid #7F77DD33;
+        }
+        .plan-card {
+          background: #0F0F1A;
+          border: 1px solid #ffffff11;
+          border-radius: 16px;
+          padding: 32px;
+          transition: border-color 0.2s, transform 0.2s;
+          cursor: pointer;
+        }
+        .plan-card:hover { border-color: #7F77DD66; transform: translateY(-2px); }
+        .plan-card.popular { border-color: #7F77DD; background: #0F0F20; }
+        .input-field {
+          background: #0F0F1A;
+          border: 1px solid #ffffff22;
+          color: #F0EFF8;
+          padding: 14px 20px;
+          border-radius: 10px;
+          font-size: 16px;
+          outline: none;
+          transition: border-color 0.2s;
+          width: 100%;
+        }
+        .input-field:focus { border-color: #7F77DD; }
+        .btn-primary {
+          background: linear-gradient(135deg, #7F77DD, #C084FC);
+          color: white;
+          border: none;
+          padding: 14px 28px;
+          border-radius: 10px;
+          font-size: 16px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: opacity 0.2s, transform 0.2s;
+          white-space: nowrap;
+        }
+        .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+        .gradient-text {
+          background: linear-gradient(135deg, #A89EFF, #E879F9);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
+        .feature-item {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          font-size: 14px;
+          color: #B0AFCC;
+          margin-bottom: 10px;
+        }
+        .feature-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          margin-top: 6px;
+          flex-shrink: 0;
+        }
+        @media (max-width: 768px) {
+          .hero-grid { flex-direction: column !important; }
+          .plans-grid { grid-template-columns: 1fr !important; }
+          .hero-title { font-size: 40px !important; }
+          .cta-row { flex-direction: column !important; }
+        }
+      `}</style>
 
       {/* NAV */}
-      <nav style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 32px',borderBottom:'0.5px solid #e5e5e5',background:'#fff',position:'sticky',top:0,zIndex:10}}>
-        <div style={{display:'flex',alignItems:'center',gap:8}}>
-          <div style={{width:28,height:28,borderRadius:8,background:'#EEEDFE',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16}}>✨</div>
-          <span style={{fontSize:16,fontWeight:500}}>aura<span style={{color:'#7F77DD'}}>.io</span></span>
+      <nav style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 40px', borderBottom: '1px solid #ffffff0A', position: 'sticky', top: 0, background: '#0A0A0Fcc', backdropFilter: 'blur(12px)', zIndex: 100 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, #7F77DD, #C084FC)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>✦</div>
+          <span style={{ fontWeight: 700, fontSize: 18, letterSpacing: '-0.5px' }}>Aura</span>
         </div>
-        <div style={{display:'flex',gap:24}}>
-          <a href="#funciones" style={{fontSize:13,color:'#666',textDecoration:'none'}}>Funciones</a>
-          <a href="#precio" style={{fontSize:13,color:'#666',textDecoration:'none'}}>Precio</a>
-          <a href="#opiniones" style={{fontSize:13,color:'#666',textDecoration:'none'}}>Opiniones</a>
+        <div style={{ display: 'flex', gap: 32, fontSize: 14, color: '#B0AFCC' }}>
+          <a href="#como-funciona" style={{ color: 'inherit', textDecoration: 'none' }}>Cómo funciona</a>
+          <a href="#planes" style={{ color: 'inherit', textDecoration: 'none' }}>Planes</a>
         </div>
-        <a href="#precio" style={{background:'#7F77DD',color:'#fff',padding:'7px 18px',borderRadius:8,fontSize:13,fontWeight:500,textDecoration:'none'}}>Empezar gratis</a>
+        <a href="#planes" style={{ background: '#7F77DD22', border: '1px solid #7F77DD44', color: '#A89EFF', padding: '8px 18px', borderRadius: 8, fontSize: 14, fontWeight: 500, textDecoration: 'none' }}>Empezar gratis</a>
       </nav>
 
       {/* HERO */}
-      <section style={{textAlign:'center',padding:'72px 24px 56px',borderBottom:'0.5px solid #e5e5e5'}}>
-        <div style={{display:'inline-flex',alignItems:'center',gap:6,background:'#EEEDFE',border:'0.5px solid #AFA9EC',borderRadius:20,padding:'5px 14px',fontSize:12,color:'#534AB7',marginBottom:22}}>
-          ✨ Todo incluido · solo €9,99 al mes
-        </div>
-        <h1 style={{fontSize:42,fontWeight:500,lineHeight:1.2,letterSpacing:'-0.8px',margin:'0 auto 16px'}}>
-          Tu asistente personal<br/>vive en <span style={{color:'#7F77DD'}}>WhatsApp</span>
-        </h1>
-        <p style={{fontSize:16,color:'#666',lineHeight:1.6,maxWidth:480,margin:'16px auto 32px'}}>
-          Aura recuerda tu agenda, actúa por ti y automatiza tu negocio. Solo habla con ella como con un amigo.
-        </p>
-        <div style={{display:'flex',justifyContent:'center',gap:12,marginBottom:32,flexWrap:'wrap'}}>
-          <a href="#precio" style={{background:'#7F77DD',color:'#fff',padding:'13px 28px',borderRadius:12,fontSize:15,fontWeight:500,textDecoration:'none',display:'inline-flex',alignItems:'center',gap:8}}>
-            💬 Probar gratis 14 días
-          </a>
-          <a href="#como-funciona" style={{background:'transparent',border:'1.5px solid #ddd',color:'#1a1a1a',padding:'12px 24px',borderRadius:12,fontSize:15,textDecoration:'none'}}>
-            Ver cómo funciona →
-          </a>
-        </div>
-        <div style={{fontSize:12,color:'#888'}}>
-          Más de <strong style={{color:'#1a1a1a'}}>1.248 profesionales</strong> ya usan Aura
-        </div>
-      </section>
-
-      {/* STATS */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',borderBottom:'0.5px solid #e5e5e5'}}>
-        {[['1.248','profesionales activos'],['94%','tasa de apertura WA'],['0.8s','velocidad de respuesta'],['98%','renuevan cada mes']].map(([v,l])=>(
-          <div key={l} style={{padding:'24px 16px',textAlign:'center',borderRight:'0.5px solid #e5e5e5'}}>
-            <div style={{fontSize:26,fontWeight:500,color:'#534AB7',marginBottom:4}}>{v}</div>
-            <div style={{fontSize:11,color:'#888'}}>{l}</div>
+      <section style={{ maxWidth: 1200, margin: '0 auto', padding: '80px 40px 60px', display: 'flex', gap: 80, alignItems: 'center' }} className="hero-grid">
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'inline-block', background: '#7F77DD18', border: '1px solid #7F77DD33', borderRadius: 100, padding: '6px 16px', fontSize: 13, color: '#A89EFF', marginBottom: 28 }}>
+            Asistente personal con IA
           </div>
-        ))}
-      </div>
-
-      {/* FUNCIONES */}
-      <section id="funciones" style={{padding:'56px 32px',borderBottom:'0.5px solid #e5e5e5'}}>
-        <div style={{textAlign:'center',marginBottom:36}}>
-          <div style={{display:'inline-flex',alignItems:'center',gap:5,background:'#EEEDFE',border:'0.5px solid #AFA9EC',borderRadius:20,padding:'4px 12px',fontSize:11,color:'#534AB7',marginBottom:12}}>⚡ Funciones</div>
-          <h2 style={{fontSize:28,fontWeight:500,letterSpacing:'-0.4px',marginBottom:10}}>Todo lo que <span style={{color:'#7F77DD'}}>Aura</span> hace por ti</h2>
-          <p style={{fontSize:14,color:'#666',maxWidth:480,margin:'0 auto'}}>Un solo plan, sin límites. Por €9,99 al mes tienes acceso a todo.</p>
-        </div>
-        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,maxWidth:900,margin:'0 auto'}}>
-          {[
-            ['🧠','Memoria permanente','Recuerda tu nombre, trabajo y preferencias. Nunca repites lo mismo dos veces.'],
-            ['☀️','Buenos días diarios','Cada mañana te manda un resumen de tu agenda y urgencias del día.'],
-            ['📅','Agenda inteligente','Crea citas, confirma clientes y gestiona tu calendario con un mensaje.'],
-            ['⚡','Automatizaciones','Flujos de bienvenida, recordatorios, cumpleaños y confirmaciones sin límite.'],
-            ['🔔','Recordatorios que actúan','No solo te recuerda — envía el mensaje y programa el siguiente paso.'],
-            ['🏛️','Social Club incluido','Comunidades exclusivas, eventos y networking con otros profesionales.'],
-          ].map(([icon,title,desc])=>(
-            <div key={title} style={{background:'#f9f9f9',borderRadius:12,padding:20,border:'0.5px solid #e5e5e5'}}>
-              <div style={{fontSize:28,marginBottom:10}}>{icon}</div>
-              <div style={{fontSize:13,fontWeight:500,marginBottom:6}}>{title}</div>
-              <div style={{fontSize:12,color:'#666',lineHeight:1.5}}>{desc}</div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* COMO FUNCIONA */}
-      <section id="como-funciona" style={{padding:'56px 32px',borderBottom:'0.5px solid #e5e5e5',background:'#fafafa'}}>
-        <div style={{textAlign:'center',marginBottom:36}}>
-          <div style={{display:'inline-flex',gap:5,background:'#EEEDFE',border:'0.5px solid #AFA9EC',borderRadius:20,padding:'4px 12px',fontSize:11,color:'#534AB7',marginBottom:12}}>🗺️ Cómo funciona</div>
-          <h2 style={{fontSize:28,fontWeight:500,letterSpacing:'-0.4px'}}>En marcha en <span style={{color:'#7F77DD'}}>menos de 5 minutos</span></h2>
-        </div>
-        <div style={{maxWidth:600,margin:'0 auto'}}>
-          {[
-            ['1','Te suscribes y Aura te escribe','Al registrarte recibes un primer mensaje de Aura en WhatsApp. Te guía en una conversación de 5 minutos para conocerte.'],
-            ['2','Aura aprende cómo eres','Te pregunta tu nombre, trabajo, horario y prioridades. Guarda todo en su memoria permanente.'],
-            ['3','Desde mañana, Aura actúa','Recibirás tu primer buenos días con tu agenda real. Solo habla con Aura y ella hace el resto.'],
-            ['4','Automatiza tu negocio','Crea flujos para tus clientes sin límite. Todo desde WhatsApp o el panel web.'],
-          ].map(([num,title,desc])=>(
-            <div key={num} style={{display:'flex',gap:16,padding:'20px 0',borderBottom:'0.5px solid #e5e5e5'}}>
-              <div style={{width:36,height:36,borderRadius:'50%',background:'#EEEDFE',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,fontWeight:500,color:'#534AB7',flexShrink:0,marginTop:2}}>{num}</div>
-              <div>
-                <div style={{fontSize:14,fontWeight:500,marginBottom:4}}>{title}</div>
-                <div style={{fontSize:13,color:'#666',lineHeight:1.5}}>{desc}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* PRECIO */}
-      <section id="precio" style={{padding:'56px 32px',borderBottom:'0.5px solid #e5e5e5'}}>
-        <div style={{textAlign:'center',marginBottom:36}}>
-          <div style={{display:'inline-flex',gap:5,background:'#EEEDFE',border:'0.5px solid #AFA9EC',borderRadius:20,padding:'4px 12px',fontSize:11,color:'#534AB7',marginBottom:12}}>💎 Precio</div>
-          <h2 style={{fontSize:28,fontWeight:500,letterSpacing:'-0.4px',marginBottom:10}}>Un solo plan.<br/><span style={{color:'#7F77DD'}}>Todo incluido.</span></h2>
-          <p style={{fontSize:14,color:'#666'}}>Sin tiers, sin limitaciones, sin sorpresas.</p>
-        </div>
-        <div style={{maxWidth:360,margin:'0 auto',border:'2px solid #7F77DD',borderRadius:20,padding:32,textAlign:'center',position:'relative'}}>
-          <div style={{position:'absolute',top:-12,left:'50%',transform:'translateX(-50%)',background:'#EEEDFE',color:'#534AB7',fontSize:11,fontWeight:500,padding:'3px 14px',borderRadius:10,border:'0.5px solid #AFA9EC',whiteSpace:'nowrap'}}>PREMIUM</div>
-          <div style={{fontSize:22,fontWeight:500,marginBottom:4}}>👑 Aura Premium</div>
-          <div style={{fontSize:13,color:'#888',marginBottom:20}}>Tu asistente personal, sin límites</div>
-          <div style={{fontSize:52,fontWeight:500,color:'#534AB7',lineHeight:1,letterSpacing:'-2px'}}>
-            <sup style={{fontSize:22,fontWeight:400,verticalAlign:'super'}}>€</sup>9<span style={{fontSize:32,fontWeight:400}}>,99</span>
-          </div>
-          <div style={{fontSize:13,color:'#888',marginBottom:6}}>al mes · cancela cuando quieras</div>
-          <div style={{fontSize:11,color:'#1D9E75',background:'#E1F5EE',padding:'3px 12px',borderRadius:10,display:'inline-block',marginBottom:24}}>🎁 14 días gratis · sin tarjeta</div>
-          <div style={{height:'0.5px',background:'#e5e5e5',margin:'0 -32px 22px'}}></div>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,textAlign:'left',marginBottom:24}}>
-            {['Aura en tu WhatsApp','Memoria permanente','Buenos días diarios','Agenda inteligente','Flujos ilimitados','Mensajes ilimitados','IA para redactar','CRM de contactos','Analytics completas','Social Club','Eventos exclusivos','Soporte prioritario'].map(f=>(
-              <div key={f} style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'#555'}}>
-                <span style={{color:'#7F77DD'}}>✓</span>{f}
-              </div>
-            ))}
-          </div>
-          <form onSubmit={handleSubmit} style={{display:'flex',flexDirection:'column',gap:8}}>
-            <input name="email" type="email" placeholder="tu@email.com" required style={{width:'100%',padding:'10px 14px',borderRadius:8,border:'0.5px solid #ddd',fontSize:13,fontFamily:'system-ui',boxSizing:'border-box'}}/>
-            <button type="submit" style={{width:'100%',padding:14,background:'#7F77DD',border:'none',color:'#fff',borderRadius:12,fontSize:15,fontWeight:500,cursor:'pointer'}}>
-              💬 Empezar gratis 14 días
+          <h1 className="hero-title" style={{ fontSize: 58, fontWeight: 800, lineHeight: 1.1, letterSpacing: '-2px', marginBottom: 24 }}>
+            Tu asistente personal<br />
+            <span className="gradient-text">siempre disponible</span>
+          </h1>
+          <p style={{ fontSize: 18, color: '#8887AA', lineHeight: 1.7, marginBottom: 40, maxWidth: 480 }}>
+            Aura gestiona tu agenda, recordatorios, facturas y contactos automáticamente. Habla con ella como si fuera una persona — ella se encarga del resto.
+          </p>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }} className="cta-row">
+            <input className="input-field" style={{ maxWidth: 280 }} type="email" placeholder="tu@email.com" value={email} onChange={e => setEmail(e.target.value)} />
+            <button className="btn-primary" onClick={() => handleSubmit(selectedPlan)} disabled={loading}>
+              {loading ? 'Cargando...' : 'Probar 14 días gratis'}
             </button>
-          </form>
-          <div style={{fontSize:11,color:'#aaa',marginTop:10,display:'flex',justifyContent:'center',gap:14}}>
-            <span>🔒 Sin compromiso</span>
-            <span>❌ Cancela cuando quieras</span>
+          </div>
+          <p style={{ fontSize: 13, color: '#555570', marginTop: 16 }}>Sin tarjeta de crédito · Cancela cuando quieras</p>
+        </div>
+
+        {/* CHAT DEMO */}
+        <div style={{ flex: 1, maxWidth: 400 }}>
+          <div className="glow" style={{ background: '#0F0F1A', border: '1px solid #7F77DD33', borderRadius: 20, overflow: 'hidden' }}>
+            <div style={{ background: '#12122A', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid #ffffff0A' }}>
+              <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg, #7F77DD, #C084FC)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>✦</div>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>Aura</div>
+                <div style={{ fontSize: 12, color: '#7F77DD' }}>● En línea</div>
+              </div>
+            </div>
+            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 12, minHeight: 300 }}>
+              {chatMessages.map((msg, i) => (
+                <div key={i} className={msg.from === 'user' ? 'chat-bubble-user' : 'chat-bubble-aura'}>
+                  {msg.text}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
 
-      {/* OPINIONES */}
-      <section id="opiniones" style={{padding:'56px 32px',borderBottom:'0.5px solid #e5e5e5',background:'#fafafa'}}>
-        <div style={{textAlign:'center',marginBottom:36}}>
-          <div style={{display:'inline-flex',gap:5,background:'#EEEDFE',border:'0.5px solid #AFA9EC',borderRadius:20,padding:'4px 12px',fontSize:11,color:'#534AB7',marginBottom:12}}>⭐ Opiniones</div>
-          <h2 style={{fontSize:28,fontWeight:500,letterSpacing:'-0.4px'}}>Lo que dicen quienes ya <span style={{color:'#7F77DD'}}>usan Aura</span></h2>
-        </div>
-        <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:12,maxWidth:800,margin:'0 auto'}}>
+      {/* CÓMO FUNCIONA */}
+      <section id="como-funciona" style={{ maxWidth: 1200, margin: '0 auto', padding: '80px 40px' }}>
+        <h2 style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-1.5px', marginBottom: 16, textAlign: 'center' }}>Cómo funciona</h2>
+        <p style={{ color: '#8887AA', textAlign: 'center', fontSize: 17, marginBottom: 64 }}>Tres pasos para tener tu asistente personal listo</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 32 }}>
           {[
-            ['MR','María Rodríguez','Dentista · Madrid','"Aura me manda el buenos días con toda mi agenda. Ya no uso Google Calendar para nada."'],
-            ['JL','Juan López','Fisioterapeuta · Barcelona','"Mis clientes reciben confirmación automática. Por €9,99 es una locura."'],
-            ['AS','Ana Sánchez','E-commerce · Valencia','"Lancé mi colección y Aura avisó a 400 clientes en 2 minutos. Tasa del 96%."'],
-            ['CP','Carlos Pérez','Consultor · Sevilla','"Le digo a Aura lo que necesito y lo hace. Como una secretaria por menos de €10."'],
-          ].map(([initials,name,role,text])=>(
-            <div key={name} style={{background:'#fff',borderRadius:12,padding:18,border:'0.5px solid #e5e5e5'}}>
-              <div style={{marginBottom:10}}>⭐⭐⭐⭐⭐</div>
-              <p style={{fontSize:13,color:'#1a1a1a',lineHeight:1.6,marginBottom:12,fontStyle:'italic'}}>{text}</p>
-              <div style={{display:'flex',alignItems:'center',gap:9}}>
-                <div style={{width:30,height:30,borderRadius:'50%',background:'#EEEDFE',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:500,color:'#534AB7'}}>{initials}</div>
-                <div>
-                  <div style={{fontSize:12,fontWeight:500}}>{name}</div>
-                  <div style={{fontSize:11,color:'#888'}}>{role}</div>
-                </div>
-              </div>
+            { step: '1', title: 'Te suscribes', desc: 'Elige tu plan y crea tu cuenta en menos de 2 minutos. Sin complicaciones.' },
+            { step: '2', title: 'Aura te conoce', desc: 'Te hace unas preguntas para entender tu trabajo, horario y prioridades.' },
+            { step: '3', title: 'Ella se encarga', desc: 'Desde ese momento, Aura gestiona tu vida automáticamente. Tú solo habla con ella.' },
+          ].map((item) => (
+            <div key={item.step} style={{ padding: '32px', background: '#0F0F1A', border: '1px solid #ffffff0A', borderRadius: 16 }}>
+              <div style={{ width: 48, height: 48, borderRadius: 12, background: 'linear-gradient(135deg, #7F77DD22, #C084FC22)', border: '1px solid #7F77DD44', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 800, color: '#A89EFF', marginBottom: 20 }}>{item.step}</div>
+              <h3 style={{ fontSize: 20, fontWeight: 700, marginBottom: 10 }}>{item.title}</h3>
+              <p style={{ color: '#8887AA', fontSize: 15, lineHeight: 1.6 }}>{item.desc}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* CTA FINAL */}
-      <section style={{padding:'72px 32px',textAlign:'center',background:'#fafafa'}}>
-        <h2 style={{fontSize:30,fontWeight:500,letterSpacing:'-0.4px',marginBottom:10}}>Aura te está esperando en <span style={{color:'#7F77DD'}}>WhatsApp</span></h2>
-        <p style={{fontSize:14,color:'#666',marginBottom:28,lineHeight:1.6}}>14 días gratis. Sin tarjeta.<br/>Después solo <strong>€9,99 al mes</strong> con todo incluido.</p>
-        <form onSubmit={handleSubmit} style={{display:'flex',gap:8,maxWidth:380,margin:'0 auto 10px'}}>
-          <input name="email" type="email" placeholder="tu@email.com" required style={{flex:1,padding:'11px 16px',borderRadius:8,border:'0.5px solid #ddd',fontSize:13,fontFamily:'system-ui'}}/>
-          <button type="submit" style={{padding:'11px 20px',background:'#7F77DD',border:'none',color:'#fff',borderRadius:8,fontSize:13,fontWeight:500,cursor:'pointer',whiteSpace:'nowrap'}}>Empezar gratis</button>
-        </form>
-        <div style={{fontSize:11,color:'#aaa'}}>Al registrarte, Aura te escribirá directamente a WhatsApp.</div>
+      {/* CAPACIDADES */}
+      <section style={{ maxWidth: 1200, margin: '0 auto', padding: '40px 40px 80px' }}>
+        <h2 style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-1.5px', marginBottom: 16, textAlign: 'center' }}>Todo lo que hace Aura</h2>
+        <p style={{ color: '#8887AA', textAlign: 'center', fontSize: 17, marginBottom: 64 }}>Dile lo que necesitas en lenguaje natural — ella lo hace</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}>
+          {[
+            { emoji: '⏰', title: 'Recordatorios', desc: 'Te avisa exactamente cuando lo necesitas. "Recuérdame llamar a Juan en 2 horas."' },
+            { emoji: '📅', title: 'Agenda', desc: 'Crea eventos en Google Calendar automáticamente. Sin abrir ninguna app.' },
+            { emoji: '🧾', title: 'Facturas', desc: 'Genera PDFs profesionales con IVA y datos fiscales completos al instante.' },
+            { emoji: '🧠', title: 'Memoria', desc: 'Recuerda todo sobre ti — tu trabajo, clientes, preferencias, alergias.' },
+            { emoji: '✅', title: 'Tareas', desc: 'Apunta pendientes y márcalos como hechos con un mensaje.' },
+            { emoji: '👥', title: 'Contactos', desc: 'Guarda información importante de cada persona con la que trabajas.' },
+          ].map((item) => (
+            <div key={item.title} style={{ padding: '28px', background: '#0F0F1A', border: '1px solid #ffffff08', borderRadius: 14 }}>
+              <div style={{ fontSize: 28, marginBottom: 14 }}>{item.emoji}</div>
+              <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>{item.title}</h3>
+              <p style={{ color: '#8887AA', fontSize: 14, lineHeight: 1.6 }}>{item.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* PLANES */}
+      <section id="planes" style={{ maxWidth: 1200, margin: '0 auto', padding: '40px 40px 100px' }}>
+        <h2 style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-1.5px', marginBottom: 16, textAlign: 'center' }}>Elige tu plan</h2>
+        <p style={{ color: '#8887AA', textAlign: 'center', fontSize: 17, marginBottom: 64 }}>14 días gratis en todos los planes · Cancela cuando quieras</p>
+        <div className="plans-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, marginBottom: 48 }}>
+          {plans.map((plan, i) => (
+            <div key={plan.name} className={`plan-card${plan.popular ? ' popular' : ''}`} onClick={() => setSelectedPlan(i)}>
+              {plan.popular && (
+                <div style={{ background: 'linear-gradient(135deg, #7F77DD, #C084FC)', color: 'white', fontSize: 11, fontWeight: 600, padding: '4px 12px', borderRadius: 100, display: 'inline-block', marginBottom: 16 }}>MÁS POPULAR</div>
+              )}
+              <h3 style={{ fontSize: 20, fontWeight: 700, marginBottom: 6, color: plan.color }}>{plan.name}</h3>
+              <div style={{ fontSize: 36, fontWeight: 800, letterSpacing: '-1px', marginBottom: 4 }}>€{plan.price}<span style={{ fontSize: 16, fontWeight: 400, color: '#8887AA' }}>/mes</span></div>
+              <p style={{ fontSize: 13, color: '#8887AA', marginBottom: 24, lineHeight: 1.5 }}>{plan.desc}</p>
+              <div style={{ borderTop: '1px solid #ffffff0A', paddingTop: 20 }}>
+                {plan.features.map((f) => (
+                  <div key={f} className="feature-item">
+                    <div className="feature-dot" style={{ background: plan.color }} />
+                    {f}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ maxWidth: 480, margin: '0 auto', textAlign: 'center' }}>
+          <div style={{ display: 'flex', gap: 12, marginBottom: 12 }} className="cta-row">
+            <input className="input-field" type="email" placeholder="tu@email.com" value={email} onChange={e => setEmail(e.target.value)} />
+            <button className="btn-primary" onClick={() => handleSubmit(selectedPlan)} disabled={loading}>
+              {loading ? 'Cargando...' : 'Empezar gratis'}
+            </button>
+          </div>
+          <p style={{ fontSize: 13, color: '#555570' }}>Sin tarjeta · 14 días gratis · Cancela cuando quieras</p>
+        </div>
       </section>
 
       {/* FOOTER */}
-      <footer style={{padding:'24px 32px',display:'flex',alignItems:'center',justifyContent:'space-between',borderTop:'0.5px solid #e5e5e5'}}>
-        <span style={{fontSize:13,fontWeight:500}}>aura<span style={{color:'#7F77DD'}}>.io</span></span>
-        <div style={{display:'flex',gap:16}}>
-          <a href="#" style={{fontSize:12,color:'#888',textDecoration:'none'}}>Privacidad</a>
-          <a href="#" style={{fontSize:12,color:'#888',textDecoration:'none'}}>Términos</a>
-          <a href="#" style={{fontSize:12,color:'#888',textDecoration:'none'}}>Contacto</a>
+      <footer style={{ borderTop: '1px solid #ffffff0A', padding: '32px 40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', maxWidth: 1200, margin: '0 auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 7, background: 'linear-gradient(135deg, #7F77DD, #C084FC)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>✦</div>
+          <span style={{ fontWeight: 700, fontSize: 16 }}>Aura</span>
         </div>
-        <span style={{fontSize:11,color:'#aaa'}}>© 2025 aura.io</span>
+        <p style={{ fontSize: 13, color: '#555570' }}>© 2026 Aura. Todos los derechos reservados.</p>
+        <div style={{ display: 'flex', gap: 24, fontSize: 13, color: '#555570' }}>
+          <a href="#" style={{ color: 'inherit', textDecoration: 'none' }}>Privacidad</a>
+          <a href="#" style={{ color: 'inherit', textDecoration: 'none' }}>Términos</a>
+        </div>
       </footer>
-
     </main>
   )
 }
