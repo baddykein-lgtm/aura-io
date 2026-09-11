@@ -8,7 +8,7 @@ const plans = [
     desc: 'Para profesionales que quieren organizarse mejor',
     color: '#7F77DD',
     features: [
-      'Aura en WhatsApp 24/7',
+      'Aura disponible 24/7',
       'Memoria permanente',
       'Recordatorios automáticos',
       'Agenda + Google Calendar',
@@ -33,7 +33,6 @@ const plans = [
       'Facturas completas con IVA',
       'Panel de administración',
       'Gmail integrado',
-      'WhatsApp número propio',
       'CRM de clientes',
     ],
   },
@@ -64,7 +63,6 @@ const plans = [
       'Integraciones a medida',
       'Account manager dedicado',
       'SLA garantizado',
-      'WhatsApp API directa',
       'Formación del equipo',
     ],
   },
@@ -84,7 +82,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState(1)
 
-  const handleSubmit = async (planIndex: number) => {
+  const handleSubmit = async () => {
     if (!email) return
     setLoading(true)
     try {
@@ -218,11 +216,11 @@ export default function Home() {
             <span className="gradient-text">siempre disponible</span>
           </h1>
           <p style={{ fontSize: 18, color: '#8887AA', lineHeight: 1.7, marginBottom: 40, maxWidth: 480 }}>
-            Aura gestiona tu agenda, recordatorios, facturas y contactos automáticamente. Habla con ella como si fuera una persona — ella se encarga del resto.
+            Aura gestiona tu agenda, recordatorios, facturas y contactos automáticamente. Habla con ella desde cualquier dispositivo — ella se encarga del resto.
           </p>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }} className="cta-row">
             <input className="input-field" style={{ maxWidth: 280 }} type="email" placeholder="tu@email.com" value={email} onChange={e => setEmail(e.target.value)} />
-            <button className="btn-primary" onClick={() => handleSubmit(selectedPlan)} disabled={loading}>
+            <button className="btn-primary" onClick={handleSubmit} disabled={loading}>
               {loading ? 'Cargando...' : 'Probar 14 días gratis'}
             </button>
           </div>
@@ -318,7 +316,7 @@ export default function Home() {
         <div style={{ maxWidth: 480, margin: '0 auto', textAlign: 'center' }}>
           <div style={{ display: 'flex', gap: 12, marginBottom: 12 }} className="cta-row">
             <input className="input-field" type="email" placeholder="tu@email.com" value={email} onChange={e => setEmail(e.target.value)} />
-            <button className="btn-primary" onClick={() => handleSubmit(selectedPlan)} disabled={loading}>
+            <button className="btn-primary" onClick={handleSubmit} disabled={loading}>
               {loading ? 'Cargando...' : 'Empezar gratis'}
             </button>
           </div>
