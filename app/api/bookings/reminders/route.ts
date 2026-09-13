@@ -2,14 +2,10 @@ import { supabase } from '@/lib/supabase'
 import { sendWhatsApp } from '@/lib/whatsapp'
 import { NextResponse } from 'next/server'
 
-// Ventana de tolerancia: cubre el hueco entre dos ejecuciones del cron
-// (evita que un booking se cuele entre dos pasadas sin recibir aviso).
-const WINDOW_MINUTES = 20
-
-async function sendWindowReminders(offsetHours: number, column: 'reminder_24h_sent' | 'reminder_2h_sent', label: string) {
+async function sendWindowReminders(offsetHours: number, windowMinutes: number, column: 'reminder_24h_sent' | 'reminder_2h_sent', label: string) {
   const now = Date.now()
   const from = new Date(now + offsetHours * 60 * 60 * 1000).toISOString()
-  const to = new Date(now + offsetHours * 60 * 60 * 1000 + WINDOW_MINUTES * 60 * 1000).toISOString()
+  const to = new Date(now + offsetHours * 60 * 60 * 1000 + windowMinutes * 60 * 1000).toISOString()
 
   const { data: bookings, error } = await supabase
     .from('bookings')
@@ -41,9 +37,16 @@ export async function GET(req: Request) {
   if (auth !== `Bearer ${process.env.CRON_SECRET}`)
     return new Response('Unauthorized', { status: 401 })
 
+  // El plan de Vercel del proyecto es Hobby: los crons solo pueden correr una
+  // vez al día (con hasta ±59 min de margen), así que este endpoint corre una
+  // sola vez y usa una ventana de 24h para no dejarse ningún booking por el
+  // camino. El recordatorio "2h antes" queda listo en el código (columna
+  // reminder_2h_sent incluida) pero con esta cadencia apenas coincidirá con
+  // una reserva real -- para que dispare de verdad hace falta un cron más
+  // frecuente, que solo está disponible en el plan Pro de Vercel.
   const [r24h, r2h] = await Promise.all([
-    sendWindowReminders(24, 'reminder_24h_sent', 'mañana'),
-    sendWindowReminders(2, 'reminder_2h_sent', 'en 2 horas'),
+    sendWindowReminders(24, 24 * 60, 'reminder_24h_sent', 'mañana'),
+    sendWindowReminders(2, 20, 'reminder_2h_sent', 'en 2 horas'),
   ])
 
   return NextResponse.json({ sent24h: r24h.sent, sent2h: r2h.sent, error24h: r24h.error, error2h: r2h.error })
