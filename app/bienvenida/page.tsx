@@ -67,90 +67,94 @@ function BienvenidaForm() {
   }
 
   return (
-    <main style={{ background: '#0A0A0F', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Inter', system-ui, sans-serif", padding: '20px', color: '#F0EFF8' }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-        * { box-sizing: border-box; }
-        .input-field {
-          background: #0F0F1A; border: 1px solid #ffffff22;
-          color: #F0EFF8; padding: 13px 16px;
-          border-radius: 10px; font-size: 15px; outline: none;
-          transition: border-color 0.2s; width: 100%;
-        }
-        .input-field:focus { border-color: #7F77DD; }
-        .btn {
-          background: linear-gradient(135deg, #7F77DD, #C084FC);
-          color: white; border: none; padding: 13px;
-          border-radius: 10px; font-size: 15px; font-weight: 600;
-          cursor: pointer; width: 100%; transition: opacity 0.2s;
-        }
-        .btn:hover { opacity: 0.88; }
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .spinner {
-          width: 28px; height: 28px; border-radius: 50%;
-          border: 3px solid #7F77DD33; border-top-color: #7F77DD;
-          margin: 0 auto; animation: spin 0.8s linear infinite;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
-      `}</style>
-
-      <div style={{ width: '100%', maxWidth: 400 }}>
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ width: 44, height: 44, borderRadius: 12, background: 'linear-gradient(135deg, #7F77DD, #C084FC)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, margin: '0 auto 16px' }}>✦</div>
-          <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-0.5px' }}>¡Bienvenido a Aura!</h1>
-          <p style={{ color: '#8887AA', fontSize: 14, marginTop: 6 }}>Tu suscripción está activa</p>
+    <main className="min-h-screen bg-bg text-text flex items-center justify-center px-5 py-16" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+      <div className="w-full max-w-[480px]">
+        <div className="text-center mb-10">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-accent to-accent-2 flex items-center justify-center text-2xl mx-auto mb-6">✦</div>
+          <h1 className="text-[28px] font-extrabold tracking-tight mb-2">¡Bienvenido a Aura!</h1>
+          <p className="text-muted text-[15px]">Tu suscripción está activa — solo falta un paso</p>
         </div>
 
-        <div style={{ background: '#0F0F1A', border: '1px solid #ffffff11', borderRadius: 16, padding: 28 }}>
+        {(status === 'ready' || status === 'already') && (
+          <div className="flex items-center gap-2 mb-8 px-1">
+            <div className="h-1 flex-1 rounded-full bg-accent" />
+            <div className={`h-1 flex-1 rounded-full ${status === 'ready' ? 'bg-white/10' : 'bg-accent'}`} />
+          </div>
+        )}
+
+        <div className="bg-surface border border-white/10 rounded-2xl p-8 sm:p-10">
           {status === 'loading' && (
-            <div style={{ textAlign: 'center', padding: '20px 0' }}>
-              <div className="spinner" />
-              <p style={{ color: '#8887AA', fontSize: 13, marginTop: 16 }}>Confirmando tu pago...</p>
+            <div className="text-center py-8">
+              <div className="w-9 h-9 rounded-full border-[3px] border-accent/20 border-t-accent mx-auto animate-spin" />
+              <p className="text-muted text-sm mt-5">Confirmando tu pago...</p>
             </div>
           )}
 
           {status === 'error' && (
-            <p style={{ color: '#FF6B6B', fontSize: 13, textAlign: 'center' }}>{error}</p>
+            <p className="text-danger text-sm text-center leading-relaxed">{error}</p>
           )}
 
           {status === 'already' && (
-            <div style={{ textAlign: 'center' }}>
-              <p style={{ color: '#8887AA', fontSize: 14, marginBottom: 16 }}>Tu cuenta ya está configurada.</p>
-              <a href="/login" style={{ color: '#A89EFF', fontSize: 14, textDecoration: 'none' }}>Ir a iniciar sesión →</a>
+            <div className="text-center py-2">
+              <p className="text-muted text-sm mb-5">Tu cuenta ya está configurada.</p>
+              <a href="/login" className="text-accent-3 text-sm hover:underline">Ir a iniciar sesión →</a>
             </div>
           )}
 
           {status === 'ready' && (
             <>
-              <p style={{ color: '#8887AA', fontSize: 13, marginBottom: 20, lineHeight: 1.6 }}>
+              <p className="text-muted text-sm leading-relaxed mb-8">
                 Crea tu contraseña para acceder al dashboard y confírmanos tu número de WhatsApp para que Aura pueda escribirte.
               </p>
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ fontSize: 13, color: '#B0AFCC', display: 'block', marginBottom: 6 }}>Contraseña</label>
-                <input className="input-field" type="password" placeholder="Mínimo 8 caracteres" value={password} onChange={e => setPassword(e.target.value)} />
+
+              <div className="mb-8">
+                <h2 className="text-xs font-semibold text-faint uppercase tracking-wide mb-4">Tu cuenta</h2>
+                <div className="flex flex-col gap-5">
+                  <div>
+                    <label className="text-sm text-muted block mb-2">Contraseña</label>
+                    <input
+                      className="w-full bg-bg border border-white/15 text-text placeholder:text-faint px-4 py-3.5 rounded-xl text-[15px] outline-none focus:border-accent transition-colors"
+                      type="password" placeholder="Mínimo 8 caracteres" value={password} onChange={e => setPassword(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm text-muted block mb-2">Repite la contraseña</label>
+                    <input
+                      className="w-full bg-bg border border-white/15 text-text placeholder:text-faint px-4 py-3.5 rounded-xl text-[15px] outline-none focus:border-accent transition-colors"
+                      type="password" placeholder="••••••••" value={confirm} onChange={e => setConfirm(e.target.value)}
+                    />
+                  </div>
+                </div>
               </div>
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ fontSize: 13, color: '#B0AFCC', display: 'block', marginBottom: 6 }}>Repite la contraseña</label>
-                <input className="input-field" type="password" placeholder="••••••••" value={confirm} onChange={e => setConfirm(e.target.value)} />
+
+              <div className="mb-8">
+                <h2 className="text-xs font-semibold text-faint uppercase tracking-wide mb-4">Tu WhatsApp</h2>
+                <input
+                  className="w-full bg-bg border border-white/15 text-text placeholder:text-faint px-4 py-3.5 rounded-xl text-[15px] outline-none focus:border-accent transition-colors"
+                  type="tel" placeholder="+34 600 000 000" value={phone} onChange={e => setPhone(e.target.value)}
+                />
+                <p className="text-faint text-xs mt-2 leading-relaxed">Aura te escribirá aquí en cuanto termines este paso.</p>
               </div>
-              <div style={{ marginBottom: 20 }}>
-                <label style={{ fontSize: 13, color: '#B0AFCC', display: 'block', marginBottom: 6 }}>Tu WhatsApp</label>
-                <input className="input-field" type="tel" placeholder="+34 600 000 000" value={phone} onChange={e => setPhone(e.target.value)} />
-              </div>
-              {error && <p style={{ color: '#FF6B6B', fontSize: 13, marginBottom: 16 }}>{error}</p>}
-              <button className="btn" onClick={handleSubmit} disabled={submitting}>
+
+              {error && <p className="text-danger text-sm mb-6">{error}</p>}
+
+              <button
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="w-full py-3.5 rounded-xl text-[15px] font-semibold text-white bg-gradient-to-br from-accent to-accent-2 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 {submitting ? 'Creando cuenta...' : 'Entrar al dashboard'}
               </button>
             </>
           )}
         </div>
 
-        <div style={{
-          background: '#0F0F1A', border: '1px solid #ffffff11', borderRadius: 12,
-          padding: '16px 20px', fontSize: 13, color: '#8887AA', lineHeight: 1.6, marginTop: 20,
-        }}>
-          💬 En cuanto guardes tu número, recibirás un mensaje de Aura en WhatsApp para empezar.{' '}
-          <a href="https://wa.me/14155238886" style={{ color: '#A89EFF' }}>Abrir WhatsApp</a>
+        <div className="flex items-start gap-3 bg-surface border border-white/10 rounded-2xl px-6 py-5 mt-6">
+          <span className="text-lg leading-none mt-0.5">💬</span>
+          <p className="text-muted text-sm leading-relaxed">
+            En cuanto guardes tu número, recibirás un mensaje de Aura en WhatsApp para empezar.{' '}
+            <a href="https://wa.me/14155238886" className="text-accent-3 hover:underline">Abrir WhatsApp</a>
+          </p>
         </div>
       </div>
     </main>
