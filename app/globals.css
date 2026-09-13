@@ -18,14 +18,16 @@
   --color-danger: #FF6B6B;
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
 
-body {
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-family: var(--font-sans);
+  body {
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+  }
 }
