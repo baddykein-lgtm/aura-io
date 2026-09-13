@@ -7,9 +7,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!user) redirect('/login')
 
   return (
-    <div className="flex min-h-screen bg-[#0A0A0F] text-[#F0EFF8]" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <div className="flex flex-col lg:flex-row min-h-screen bg-[#0A0A0F] text-[#F0EFF8]" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
       <Sidebar email={user.email} />
-      <main className="flex-1 min-w-0 p-8">{children}</main>
+      <main className="flex-1 min-w-0 p-5 lg:p-8">{children}</main>
     </div>
   )
 }
