@@ -1,9 +1,19 @@
 import { supabase } from '@/lib/supabase'
+import { requireUser } from '@/lib/session'
 import { NextResponse } from 'next/server'
 import { jsPDF } from 'jspdf'
 
 export async function POST(req: Request) {
-  const { userId, clientName, clientNif, clientAddress, clientPostal, concept, amount, iva } = await req.json()
+  const body = await req.json()
+  const { clientName, clientNif, clientAddress, clientPostal, concept, amount, iva } = body
+
+  const isInternal = req.headers.get('x-internal-secret') === process.env.INTERNAL_API_SECRET
+  let userId = body.userId
+  if (!isInternal) {
+    const user = await requireUser()
+    if (!user) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+    userId = user.id
+  }
 
   if (!userId || !clientName || !concept || !amount) {
     return NextResponse.json({ error: 'Faltan datos' }, { status: 400 })
@@ -19,14 +29,6 @@ export async function POST(req: Request) {
   const ivaPercent = Number(iva ?? 21)
   const ivaAmount = baseAmount * (ivaPercent / 100)
   const total = baseAmount + ivaAmount
-
-  await supabase.from('invoices').insert({
-    user_id: userId,
-    client_name: clientName,
-    concept,
-    amount: total,
-    invoice_number: invoiceNumber
-  })
 
   const doc = new jsPDF()
 
@@ -124,5 +126,15 @@ export async function POST(req: Request) {
   }
 
   const { data: { publicUrl } } = supabase.storage.from('invoices').getPublicUrl(fileName)
+
+  await supabase.from('invoices').insert({
+    user_id: userId,
+    client_name: clientName,
+    concept,
+    amount: total,
+    invoice_number: invoiceNumber,
+    pdf_url: publicUrl
+  })
+
   return NextResponse.json({ url: publicUrl, invoiceNumber })
 }
