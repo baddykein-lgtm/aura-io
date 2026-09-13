@@ -192,10 +192,15 @@ export default function Home() {
             <a href="#como-funciona" style={{ color: 'inherit', textDecoration: 'none' }}>Cómo funciona</a>
             <a href="#planes" style={{ color: 'inherit', textDecoration: 'none' }}>Planes</a>
           </div>
-          <a href="#planes" style={{ background: '#7F77DD22', border: '1px solid #7F77DD44', color: '#A89EFF', padding: '7px 14px', borderRadius: 8, fontSize: 13, fontWeight: 500, textDecoration: 'none', whiteSpace: 'nowrap' }}>
-            <span className="nav-btn-text">Suscribirse</span>
-            <span style={{ display: 'none' }} className="nav-btn-short">→</span>
-          </a>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+            <a href="/login" style={{ color: '#B0AFCC', fontSize: 13, fontWeight: 500, textDecoration: 'none', whiteSpace: 'nowrap' }}>
+              Iniciar sesión
+            </a>
+            <a href="#planes" style={{ background: '#7F77DD22', border: '1px solid #7F77DD44', color: '#A89EFF', padding: '7px 14px', borderRadius: 8, fontSize: 13, fontWeight: 500, textDecoration: 'none', whiteSpace: 'nowrap' }}>
+              <span className="nav-btn-text">Suscribirse</span>
+              <span style={{ display: 'none' }} className="nav-btn-short">→</span>
+            </a>
+          </div>
         </div>
       </nav>
 
