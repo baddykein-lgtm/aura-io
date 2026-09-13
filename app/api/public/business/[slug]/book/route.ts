@@ -60,9 +60,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  const when = new Date(startsAt).toLocaleString('es-ES', { timeZone: 'Europe/Madrid', dateStyle: 'medium', timeStyle: 'short' })
+  const businessName = user.business_name || 'el negocio'
+
   if (user.phone) {
-    const when = new Date(startsAt).toLocaleString('es-ES', { timeZone: 'Europe/Madrid', dateStyle: 'medium', timeStyle: 'short' })
     await sendWhatsApp(user.phone, `📅 Nueva reserva: ${clientName.trim()} — ${service.name}\n${when}${clientPhone ? `\nTel: ${clientPhone}` : ''}`)
+  }
+
+  if (clientPhone) {
+    await sendWhatsApp(clientPhone, `✅ Reserva confirmada con ${businessName}\n${service.name} — ${when}\n\nTe avisaremos antes de tu cita 💜`)
   }
 
   return NextResponse.json({ booking })

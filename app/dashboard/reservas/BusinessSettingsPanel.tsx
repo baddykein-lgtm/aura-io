@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import QRCode from 'qrcode'
 import { Card, Button, Input } from '../ui'
 
 type Service = { id: string; name: string; duration_minutes: number; price: number | null }
@@ -18,6 +19,7 @@ export default function BusinessSettingsPanel() {
   const [savingBusiness, setSavingBusiness] = useState(false)
   const [businessError, setBusinessError] = useState('')
   const [copied, setCopied] = useState(false)
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
 
   const [services, setServices] = useState<Service[]>([])
   const [serviceName, setServiceName] = useState('')
@@ -99,6 +101,13 @@ export default function BusinessSettingsPanel() {
 
   const publicUrl = savedSlug ? `${typeof window !== 'undefined' ? window.location.origin : ''}/reservar/${savedSlug}` : null
 
+  useEffect(() => {
+    if (!publicUrl) { setQrDataUrl(null); return }
+    QRCode.toDataURL(publicUrl, { width: 320, margin: 1, color: { dark: '#0A0A0F', light: '#FFFFFF' } })
+      .then(setQrDataUrl)
+      .catch(() => setQrDataUrl(null))
+  }, [publicUrl])
+
   const copyLink = () => {
     if (!publicUrl) return
     navigator.clipboard.writeText(publicUrl)
@@ -145,6 +154,16 @@ export default function BusinessSettingsPanel() {
             </button>
           )}
         </div>
+
+        {qrDataUrl && (
+          <div className="flex items-center gap-4 mt-6 pt-6 border-t border-white/10">
+            <img src={qrDataUrl} alt="Código QR de tu página de reservas" className="w-28 h-28 rounded-lg" />
+            <div>
+              <p className="text-sm text-muted mb-2 leading-relaxed">Ponlo en tu escaparate, carta o tarjetas para que tus clientes reserven escaneando.</p>
+              <a href={qrDataUrl} download="qr-reservas-aura.png" className="text-sm text-accent-3 hover:underline">Descargar QR</a>
+            </div>
+          </div>
+        )}
       </Card>
 
       <Card className="p-5">
