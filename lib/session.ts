@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers'
+import { cache } from 'react'
 import { randomBytes } from 'crypto'
 import { supabase } from './supabase'
 
@@ -23,10 +24,10 @@ export async function getUserFromToken(token: string | undefined | null) {
   return (data as any).users ?? null
 }
 
-export async function requireUser() {
+export const requireUser = cache(async () => {
   const store = await cookies()
   return getUserFromToken(store.get(SESSION_COOKIE)?.value)
-}
+})
 
 export async function destroySession(token: string | undefined | null) {
   if (token) await supabase.from('sessions').delete().eq('token', token)

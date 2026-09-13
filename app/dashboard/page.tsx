@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation'
 import { requireUser } from '@/lib/session'
 import { supabase, getMemory } from '@/lib/supabase'
 
@@ -11,7 +12,8 @@ function StatCard({ label, value, accent }: { label: string; value: string | num
 }
 
 export default async function DashboardHome() {
-  const user = (await requireUser())!
+  const user = await requireUser()
+  if (!user) redirect('/login')
   const now = new Date()
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
 
@@ -34,7 +36,7 @@ export default async function DashboardHome() {
       <h1 className="text-2xl font-extrabold tracking-tight mb-1">Hola, {displayName} 👋</h1>
       <p className="text-[#8887AA] text-sm mb-8">Esto es lo que Aura está gestionando por ti</p>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
         <StatCard label="Tareas pendientes" value={tasks.count ?? 0} />
         <StatCard label="Recordatorios activos" value={reminders.count ?? 0} />
         <StatCard label="Facturado este mes" value={`${facturadoMes.toFixed(2)} €`} accent="#A89EFF" />
@@ -52,7 +54,7 @@ export default async function DashboardHome() {
         </a>
       )}
 
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="grid lg:grid-cols-2 gap-6">
         <div className="bg-[#0F0F1A] border border-white/10 rounded-2xl p-5">
           <h2 className="text-sm font-bold mb-4">Próximos eventos</h2>
           {agenda.data?.length ? (

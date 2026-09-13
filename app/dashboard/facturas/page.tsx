@@ -1,9 +1,11 @@
+import { redirect } from 'next/navigation'
 import { requireUser } from '@/lib/session'
 import { supabase } from '@/lib/supabase'
 import NewInvoiceForm from './NewInvoiceForm'
 
 export default async function FacturasPage() {
-  const user = (await requireUser())!
+  const user = await requireUser()
+  if (!user) redirect('/login')
   const { data: invoices } = await supabase
     .from('invoices')
     .select()

@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation'
 import { requireUser } from '@/lib/session'
 import { supabase } from '@/lib/supabase'
 
@@ -16,7 +17,8 @@ function BarChart({ data, color }: { data: { label: string; value: number }[]; c
 }
 
 export default async function AnalyticsPage() {
-  const user = (await requireUser())!
+  const user = await requireUser()
+  if (!user) redirect('/login')
 
   const since30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
   const since14 = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
@@ -68,7 +70,7 @@ export default async function AnalyticsPage() {
       <h1 className="text-2xl font-extrabold tracking-tight mb-1">Analytics</h1>
       <p className="text-[#8887AA] text-sm mb-8">Cómo está funcionando Aura para ti</p>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <div className="bg-[#0F0F1A] border border-white/10 rounded-2xl p-5">
           <div className="text-xs text-[#8887AA] mb-2">Mensajes (30 días)</div>
           <div className="text-2xl font-extrabold">{messages30.count ?? 0}</div>
@@ -87,7 +89,7 @@ export default async function AnalyticsPage() {
         </div>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6 mb-6">
+      <div className="grid lg:grid-cols-2 gap-6 mb-6">
         <div className="bg-[#0F0F1A] border border-white/10 rounded-2xl p-5">
           <h2 className="text-sm font-bold mb-5">Mensajes por día (14 días)</h2>
           <BarChart data={days} color="#7F77DD" />
