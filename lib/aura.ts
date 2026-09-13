@@ -3,7 +3,11 @@ import { getMemory, getHistory, saveMessage, saveMemory, supabase } from './supa
 import { sendWhatsApp } from './whatsapp'
 import { createCalendarEvent } from './calendar'
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+let _openai: OpenAI | null = null
+function getOpenAI() {
+  if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  return _openai
+}
 
 function getMadridTimeInfo() {
   const now = new Date()
@@ -30,7 +34,7 @@ async function generarYEnviarFactura(userId: string, fp: any, phone: string) {
   try {
     const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/invoice`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-internal-secret': process.env.INTERNAL_API_SECRET ?? '' },
       body: JSON.stringify({
         userId,
         clientName: fp.cliente,
@@ -143,7 +147,7 @@ REGLAS:
 - Arrays vacíos si no aplica. Sé muy generoso extrayendo agenda y recordatorios.`
 
   try {
-    const completion = await openai.chat.completions.create({
+    const completion = await getOpenAI().chat.completions.create({
       model: 'gpt-4o',
       response_format: { type: 'json_object' },
       max_tokens: 600,
@@ -159,7 +163,7 @@ REGLAS:
   }
 }
 
-export async function respondAura(user: any, text: string) {
+export async function generateAuraReply(user: any, text: string): Promise<string> {
   const [memory, history] = await Promise.all([
     getMemory(user.id), getHistory(user.id)
   ])
@@ -180,10 +184,9 @@ export async function respondAura(user: any, text: string) {
         fp.esperando = 'iva'
         await saveMemory(user.id, 'factura_pendiente', JSON.stringify(fp))
         const msg = `Perfecto, datos guardados ✅\n¿Qué IVA aplico? 21%, 10%, 4% o exento (0%)`
-        await sendWhatsApp(user.phone, msg)
         await saveMessage(user.id, 'user', text)
         await saveMessage(user.id, 'assistant', msg)
-        return
+        return msg
       }
     }
 
@@ -191,24 +194,24 @@ export async function respondAura(user: any, text: string) {
       const iva = extraerIVA(text)
       if (iva !== null) {
         fp.iva = iva
-        await sendWhatsApp(user.phone, '🧾 Generando tu factura...')
         await generarYEnviarFactura(user.id, fp, user.phone)
         await supabase.from('memories').delete().eq('user_id', user.id).eq('key', 'factura_pendiente')
+        const msg = `🧾 Generando tu factura...`
         await saveMessage(user.id, 'user', text)
         await saveMessage(user.id, 'assistant', `Factura generada con IVA ${iva}%`)
-        return
+        return msg
       }
     }
 
     const iva = extraerIVA(text)
     if (iva !== null && !fp.esperando) {
       fp.iva = iva
-      await sendWhatsApp(user.phone, '🧾 Generando tu factura...')
       await generarYEnviarFactura(user.id, fp, user.phone)
       await supabase.from('memories').delete().eq('user_id', user.id).eq('key', 'factura_pendiente')
+      const msg = `🧾 Generando tu factura...`
       await saveMessage(user.id, 'user', text)
       await saveMessage(user.id, 'assistant', `Factura generada con IVA ${iva}%`)
-      return
+      return msg
     }
   }
 
@@ -221,23 +224,21 @@ export async function respondAura(user: any, text: string) {
       if (!memory['nif']) {
         await saveMemory(user.id, 'factura_pendiente', JSON.stringify({ ...fi, iva: null, esperando: 'nif_emisor' }))
         const msg = `¡Perfecto! Para generar la factura necesito primero tu NIF/CIF y dirección fiscal 📋`
-        await sendWhatsApp(user.phone, msg)
         await saveMessage(user.id, 'user', text)
         await saveMessage(user.id, 'assistant', msg)
-        return
+        return msg
       }
 
       await saveMemory(user.id, 'factura_pendiente', JSON.stringify({ ...fi, iva: null, esperando: 'datos_cliente' }))
       const msg = `¡Perfecto! Factura a ${fi.cliente} por ${fi.importe}€ 🧾\n¿Cuál es el NIF/DNI de ${fi.cliente}, su dirección y código postal?`
-      await sendWhatsApp(user.phone, msg)
       await saveMessage(user.id, 'user', text)
       await saveMessage(user.id, 'assistant', msg)
-      return
+      return msg
     }
   }
 
   // ── FLUJO NORMAL ─────────────────────────────────────
-  const completion = await openai.chat.completions.create({
+  const completion = await getOpenAI().chat.completions.create({
     model: 'gpt-4o',
     max_tokens: 300,
     messages: [
@@ -264,10 +265,9 @@ export async function respondAura(user: any, text: string) {
       fp.esperando = 'datos_cliente'
       await saveMemory(user.id, 'factura_pendiente', JSON.stringify(fp))
       const msg = `NIF guardado ✅\n¿Cuál es el NIF/DNI de ${fp.cliente}, su dirección y código postal?`
-      await sendWhatsApp(user.phone, msg)
       await saveMessage(user.id, 'user', text)
       await saveMessage(user.id, 'assistant', msg)
-      return
+      return msg
     }
   }
 
@@ -317,8 +317,15 @@ export async function respondAura(user: any, text: string) {
 
   await saveMessage(user.id, 'user', text)
   await saveMessage(user.id, 'assistant', reply)
+  return reply
+}
+
+export async function respondAura(user: any, text: string) {
+  const reply = await generateAuraReply(user, text)
   await sendWhatsApp(user.phone, reply)
 }
+
+export const chatWithAura = generateAuraReply
 
 export async function startOnboarding(user: any) {
   if (!user.phone) return
